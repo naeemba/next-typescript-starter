@@ -1,70 +1,108 @@
-# Getting Started with Create React App
+# @naeemba/next-starter
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+Opinionated Next.js + Drizzle + Better Auth starter, shipped as a **versioned npm package** instead of a clone-and-fork template. Add it as a dependency, set env vars, create four shim files, and you have working magic-link email sign-in. Bump the package version to pull in fixes.
 
-## Available Scripts
+## Install
 
-In the project directory, you can run:
+```bash
+npm install @naeemba/next-starter
+```
 
-### `yarn start`
+Peer dependencies: `next >= 14`, `react >= 18`, `react-dom >= 18`.
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
+## Env vars
 
-The page will reload if you make edits.\
-You will also see any lint errors in the console.
+```bash
+DATABASE_URL=postgres://user:pass@host:5432/db
+BETTER_AUTH_SECRET=<32+ char random string>   # openssl rand -hex 32
+BETTER_AUTH_URL=https://app.example.com
+EMAIL_FROM=auth@example.com                    # optional in dev, required for Resend in prod
+RESEND_API_KEY=...                             # optional — when unset, magic links log to stdout
+```
 
-### `yarn test`
+## Four shim files in your app
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+```ts
+// app/api/auth/[...all]/route.ts
+export { GET, POST } from "@naeemba/next-starter/auth-route"
+```
 
-### `yarn build`
+```tsx
+// app/sign-in/page.tsx
+export { default } from "@naeemba/next-starter/pages/sign-in"
+```
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+```ts
+// db/schema.ts
+export * from "@naeemba/next-starter/schema"
+```
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+```ts
+// drizzle.config.ts
+import { defineConfig } from "drizzle-kit"
+export default defineConfig({
+  schema: "./db/schema.ts",
+  out: "./drizzle",
+  dialect: "postgresql",
+  dbCredentials: { url: process.env.DATABASE_URL! },
+})
+```
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+Why a `db/schema.ts` shim? drizzle-kit does not follow symlinks and requires a `.ts` schema source — so the cleanest pattern is a one-line re-export that drizzle-kit can read directly.
 
-### `yarn eject`
+## First-time setup
 
-**Note: this is a one-way operation. Once you `eject`, you can’t go back!**
+```bash
+npx drizzle-kit generate
+npx drizzle-kit migrate
+```
 
-If you aren’t satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+That creates the `user`, `session`, `account`, and `verification` tables. Re-run after a package update that changes the schema (release notes will say so).
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you’re on your own.
+## Reading the session in a Server Component
 
-You don’t have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn’t feel obligated to use this feature. However we understand that this tool wouldn’t be useful if you couldn’t customize it when you are ready for it.
+```tsx
+import { getSession } from "@naeemba/next-starter/server"
 
-## Learn More
+export default async function Page() {
+  const session = await getSession()
+  if (!session) return <a href="/sign-in">Sign in</a>
+  return <p>Hello, {session.user.email}</p>
+}
+```
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+## Dev experience
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+If `RESEND_API_KEY` is unset, the magic link is written to your server logs in a line that looks like:
 
-### Code Splitting
+```
+[magic-link-log] email=you@example.com url=http://localhost:3000/api/auth/magic-link/verify?token=...
+```
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+Copy-click the URL to sign in. This is useful for local dev before you have a Resend account.
 
-### Analyzing the Bundle Size
+If `NODE_ENV=production` and `RESEND_API_KEY` is unset, a warning is printed at boot: magic links going to logs in prod means anyone with log access can sign in as any user.
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+## TypeScript
 
-### Making a Progressive Web App
+This package is ESM-only with subpath `exports`. Your consumer `tsconfig.json` **must** set `moduleResolution` to `"bundler"` (Next 14+ default), `"node16"`, or `"nodenext"`. The legacy `"node"` resolution silently ignores subpath `types` conditions and imports degrade to `any`.
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
+## What ships in this package
 
-### Advanced Configuration
+| Subpath | What it is |
+|---|---|
+| `@naeemba/next-starter/auth` | Configured Better Auth instance |
+| `@naeemba/next-starter/auth-route` | `GET`, `POST` for `/api/auth/[...all]` |
+| `@naeemba/next-starter/schema` | Drizzle table definitions |
+| `@naeemba/next-starter/db` | Lazy Drizzle client |
+| `@naeemba/next-starter/email` | `sendMagicLink({ to, url })` |
+| `@naeemba/next-starter/pages/sign-in` | Default-exported sign-in page component |
+| `@naeemba/next-starter/server` | `getSession()` |
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
+## Design and rationale
 
-### Deployment
+See `docs/superpowers/specs/` and `docs/superpowers/plans/` in the repo for the full v0.1 foundation design and implementation plan — why a package and not a template, the re-export shim pattern, what's deferred to future versions, and the step-by-step build process.
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
+## License
 
-### `yarn build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+MIT

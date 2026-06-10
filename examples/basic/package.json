@@ -1,0 +1,29 @@
+{
+  "name": "@naeemba/next-starter-example-basic",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
+    "test:e2e": "playwright test"
+  },
+  "dependencies": {
+    "@naeemba/next-starter": "file:../..",
+    "next": "^14.2.0",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0",
+    "pg": "^8.13.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.0",
+    "@types/node": "^20.14.0",
+    "@types/react": "^18.3.0",
+    "drizzle-kit": "^0.27.0",
+    "typescript": "^5.6.0"
+  }
+}
