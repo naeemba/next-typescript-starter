@@ -1,0 +1,77 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: starter_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/starter_test
+      BETTER_AUTH_SECRET: ci-secret-must-be-thirty-two-chars-or-more
+      BETTER_AUTH_URL: http://localhost:3000
+      RESEND_API_KEY: ""
+      EMAIL_FROM: auth@example.com
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Verify tag matches package.json version
+        run: |
+          TAG="${GITHUB_REF#refs/tags/v}"
+          PKG=$(node -p "require('./package.json').version")
+          if [ "$TAG" != "$PKG" ]; then
+            echo "Tag v$TAG does not match package.json version $PKG" >&2
+            exit 1
+          fi
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck (package)
+        run: npm run typecheck
+
+      - name: Test (package)
+        run: npm test
+
+      - name: Build (package)
+        run: npm run build
+
+      - name: Apply migrations
+        run: npm --workspace examples/basic run db:migrate
+
+      - name: Install Playwright browser
+        run: npx --workspace examples/basic playwright install --with-deps chromium
+
+      - name: E2E smoke test
+        run: npm --workspace examples/basic run test:e2e
+
+      - name: Publish to npm
+        run: npm publish --provenance --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

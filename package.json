@@ -23,7 +23,9 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "prepublishOnly": "npm run typecheck && npm run test && npm run build"
+    "prepublishOnly": "npm run typecheck && npm run test && npm run build",
+    "preversion": "npm run typecheck && npm run test && npm run build",
+    "postversion": "git push --follow-tags"
   },
   "dependencies": {
     "better-auth": "^1.6.16",
