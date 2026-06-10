@@ -24,3 +24,7 @@ test-results/
 
 # Drizzle journal cache
 drizzle/.snapshot.json
+
+# Build artifacts that snuck through
+*.tsbuildinfo
+next-env.d.ts
