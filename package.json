@@ -1,6 +1,6 @@
 {
   "name": "@naeemba/next-starter",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Opinionated Next.js + Drizzle + Better Auth starter, shipped as a versioned package.",
   "license": "MIT",
   "type": "module",
@@ -26,13 +26,13 @@
     "prepublishOnly": "npm run typecheck && npm run test && npm run build"
   },
   "dependencies": {
-    "better-auth": "^1.0.0",
-    "drizzle-orm": "^0.45.0",
-    "pg": "^8.13.0",
-    "resend": "^4.0.0",
-    "@react-email/components": "^0.0.30",
-    "@react-email/render": "^1.0.0",
-    "zod": "^3.23.0"
+    "better-auth": "^1.6.16",
+    "drizzle-orm": "^0.45.2",
+    "pg": "^8.21.0",
+    "resend": "^6.12.4",
+    "@react-email/components": "^1.0.12",
+    "@react-email/render": "^2.0.8",
+    "zod": "^4.4.3"
   },
   "peerDependencies": {
     "next": ">=14.0.0",
@@ -40,15 +40,15 @@
     "react-dom": ">=18.0.0"
   },
   "devDependencies": {
-    "@types/node": "^20.14.0",
+    "@types/node": "^22.0.0",
     "@types/pg": "^8.11.0",
-    "@types/react": "^18.3.0",
-    "next": "^14.2.0",
-    "react": "^18.3.0",
-    "react-dom": "^18.3.0",
-    "tsup": "^8.3.0",
-    "typescript": "^5.6.0",
-    "vitest": "^2.1.0"
+    "@types/react": "^19.2.0",
+    "next": "^16.2.9",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "tsup": "^8.5.1",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.8"
   },
   "publishConfig": { "access": "public" }
 }

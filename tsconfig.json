@@ -16,7 +16,7 @@
     "declaration": true,
     "noEmit": true,
     "allowImportingTsExtensions": false,
-    "baseUrl": ".",
+    "ignoreDeprecations": "6.0",
     "paths": {
       "@naeemba/next-starter/*": ["./src/*"]
     }
