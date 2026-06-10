@@ -1,70 +1,82 @@
-# Getting Started with Create React App
+# next-typescript-starter
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+An opinionated Next.js + Drizzle + Better Auth + shadcn-style stack, shipped as **an installable npm package** rather than a clone-and-fork template. Consumers add it as a dependency, set env vars, and get email login working out of the box. Bumping the package version propagates fixes and improvements to every consumer.
 
-## Available Scripts
+## Why a package, not a template?
 
-In the project directory, you can run:
+Template repos (`create-t3-app`, `create-better-t-stack`, etc.) solve the scaffolding problem but not the **update problem** — once a project is generated, fixes in the upstream template never reach it. This repo takes the opposite trade: ship as much as possible as a versioned dependency so `npm update @you/starter` actually means something.
 
-### `yarn start`
+## Core architecture: re-export shims
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in the browser.
+Some files physically have to exist in the consumer's repo (Next.js route handlers, Drizzle schema entrypoint, etc.). Those become **one-line re-exports** of code that lives in this package:
 
-The page will reload if you make edits.\
-You will also see any lint errors in the console.
+```ts
+// consumer: app/api/auth/[...all]/route.ts
+export { GET, POST } from "@you/starter/auth-route"
 
-### `yarn test`
+// consumer: db/schema.ts
+export * from "@you/starter/schema"
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+// consumer: lib/auth.ts
+export { auth } from "@you/starter/auth"
 
-### `yarn build`
+// consumer: app/(auth)/sign-in/page.tsx
+export { default } from "@you/starter/pages/sign-in"
+```
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+Everything else — Better Auth config, Drizzle schema definitions, email templates, React components, server helpers — lives here and updates via version bump.
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+## What ships in the package
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+- **`@you/starter/auth`** — preconfigured Better Auth instance reading `DATABASE_URL`, `BETTER_AUTH_SECRET`, email provider creds from env.
+- **`@you/starter/auth-route`** — the Next.js route handler (`GET`, `POST`) for `/api/auth/[...all]`.
+- **`@you/starter/schema`** — Drizzle table definitions for `users`, `sessions`, `accounts`, `verification_tokens`.
+- **`@you/starter/ui`** — opinionated component library built on Radix primitives (the shadcn trade — see below).
+- **`@you/starter/pages/sign-in`**, **`/sign-up`**, **`/verify-email`** — drop-in Next.js page components.
+- **`@you/starter/email`** — Resend-based email sender + React Email templates for magic links / verification.
+- **`@you/starter/server`** — `getSession()`, `requireAuth()`, middleware helpers.
 
-### `yarn eject`
+## What env vars the consumer sets
 
-**Note: this is a one-way operation. Once you `eject`, you can’t go back!**
+```bash
+DATABASE_URL=postgres://...
+BETTER_AUTH_SECRET=...
+BETTER_AUTH_URL=https://app.example.com
+RESEND_API_KEY=...
+EMAIL_FROM=auth@example.com
+```
 
-If you aren’t satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+## Known tradeoffs (decided)
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you’re on your own.
+1. **shadcn becomes "ours, not theirs."** shadcn is copy-paste by design so consumers can edit components freely. Shipping components from a package trades per-project customization for upgradability. We accept this — components are built on Radix primitives and exposed with enough variants/slots to handle 90% of styling needs without forking.
 
-You don’t have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn’t feel obligated to use this feature. However we understand that this tool wouldn’t be useful if you couldn’t customize it when you are ready for it.
+2. **Drizzle migrations live in the consumer's repo.** Schema definitions come from the package, but `drizzle-kit generate` writes migration SQL into the consumer project. This is fine — migrations are forward-only artifacts, not source. Consumers run their own `drizzle-kit generate` after a schema-changing version bump.
 
-## Learn More
+3. **Next.js version is a peer dependency.** Consumers control the Next version. The package declares a peer range and is tested against the latest.
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+## Open questions to resolve next session
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+- [ ] **Package name / scope** — `@<scope>/starter`? Something more specific?
+- [ ] **Monorepo or single package?** — Splitting into `@you/auth`, `@you/ui`, `@you/db` gives finer-grained versioning but more overhead. Lean: start as one package, split later if needed.
+- [ ] **How does the consumer initialize the DB?** — Migration files vs. `drizzle-kit push` vs. a packaged `init` CLI command (`npx @you/starter init`).
+- [ ] **Customization escape hatches** — what's the story when a consumer needs a non-default Better Auth plugin, a custom email template, or a tweaked sign-in page? Options: render-prop components, config overrides, "eject" CLI.
+- [ ] **Versioning policy** — how do we communicate breaking changes (schema migrations, auth config shape) vs. additive ones?
+- [ ] **Testing strategy** — example consumer app in this repo that exercises the full flow on every PR.
 
-### Code Splitting
+## Context from the design discussion
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+The conversation that produced this README was about whether you can have "a repository that has Next, Drizzle, Better Auth, shadcn etc. and I just add it as a dependency, it preconfigures login with email and get some variables to do so."
 
-### Analyzing the Bundle Size
+First-pass answer was "not as a single dependency, use a template." The follow-up — "but then I have to update every fork manually" — made it clear the update story is the actual requirement, and the re-export-shim pattern above is the way to honor it. This README captures the resulting design so a fresh session can pick up and start implementing.
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+## Suggested first session
 
-### Making a Progressive Web App
+1. Decide package name and whether monorepo.
+2. Set up `package.json` with proper `exports` map (subpath exports are essential to this design).
+3. Stand up the Better Auth + Drizzle wiring as the first exported subpath.
+4. Build a minimal example consumer app in `examples/` that imports from the package via workspace protocol and exercises email sign-in end to end.
+5. Iterate on the shim ergonomics — every shim file the consumer has to create is friction; minimize the count.
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
+## Note on the current repo state
 
-### Advanced Configuration
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
-
-### Deployment
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
-
-### `yarn build` fails to minify
-
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+The directory currently contains a Create React App scaffold (`src/`, `public/`, the CRA-flavored `package.json` and `yarn.lock`). Plan is to force-push over it — none of those files belong in the eventual package shape.
