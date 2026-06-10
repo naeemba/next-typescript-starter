@@ -1,0 +1,54 @@
+{
+  "name": "@naeemba/next-starter",
+  "version": "0.1.0",
+  "description": "Opinionated Next.js + Drizzle + Better Auth starter, shipped as a versioned package.",
+  "license": "MIT",
+  "type": "module",
+  "sideEffects": false,
+  "private": false,
+  "files": ["dist", "README.md"],
+  "workspaces": ["examples/basic"],
+  "exports": {
+    "./auth":          { "types": "./dist/auth/index.d.ts",          "default": "./dist/auth/index.js" },
+    "./auth-route":    { "types": "./dist/auth-route/index.d.ts",    "default": "./dist/auth-route/index.js" },
+    "./schema":        { "types": "./dist/schema/index.d.ts",        "default": "./dist/schema/index.js" },
+    "./db":            { "types": "./dist/db/index.d.ts",            "default": "./dist/db/index.js" },
+    "./email":         { "types": "./dist/email/index.d.ts",         "default": "./dist/email/index.js" },
+    "./pages/sign-in": { "types": "./dist/pages/sign-in/index.d.ts", "default": "./dist/pages/sign-in/index.js" },
+    "./server":        { "types": "./dist/server/index.d.ts",        "default": "./dist/server/index.js" }
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepublishOnly": "npm run typecheck && npm run test && npm run build"
+  },
+  "dependencies": {
+    "better-auth": "^1.0.0",
+    "drizzle-orm": "^0.45.0",
+    "pg": "^8.13.0",
+    "resend": "^4.0.0",
+    "@react-email/components": "^0.0.30",
+    "@react-email/render": "^1.0.0",
+    "zod": "^3.23.0"
+  },
+  "peerDependencies": {
+    "next": ">=14.0.0",
+    "react": ">=18.0.0",
+    "react-dom": ">=18.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "@types/pg": "^8.11.0",
+    "@types/react": "^18.3.0",
+    "next": "^14.2.0",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0",
+    "tsup": "^8.3.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  },
+  "publishConfig": { "access": "public" }
+}
