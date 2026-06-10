@@ -3,6 +3,14 @@
   "version": "0.1.3",
   "description": "Opinionated Next.js + Drizzle + Better Auth starter, shipped as a versioned package.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/naeemba/next-typescript-starter.git"
+  },
+  "homepage": "https://github.com/naeemba/next-typescript-starter#readme",
+  "bugs": {
+    "url": "https://github.com/naeemba/next-typescript-starter/issues"
+  },
   "type": "module",
   "sideEffects": false,
   "private": false,
