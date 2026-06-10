@@ -18,4 +18,13 @@ export default defineConfig({
   external: ["next", "react", "react-dom"],
   splitting: false,
   treeshake: true,
+  async onSuccess() {
+    const fs = await import("node:fs/promises")
+    const filePath = "dist/pages/sign-in/index.js"
+    const content = await fs.readFile(filePath, "utf8")
+    const trimmed = content.trimStart()
+    if (!trimmed.startsWith('"use client"') && !trimmed.startsWith("'use client'")) {
+      await fs.writeFile(filePath, '"use client"\n' + content, "utf8")
+    }
+  },
 })
