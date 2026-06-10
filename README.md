@@ -1,82 +1,108 @@
-# next-typescript-starter
+# @naeemba/next-starter
 
-An opinionated Next.js + Drizzle + Better Auth + shadcn-style stack, shipped as **an installable npm package** rather than a clone-and-fork template. Consumers add it as a dependency, set env vars, and get email login working out of the box. Bumping the package version propagates fixes and improvements to every consumer.
+Opinionated Next.js + Drizzle + Better Auth starter, shipped as a **versioned npm package** instead of a clone-and-fork template. Add it as a dependency, set env vars, create four shim files, and you have working magic-link email sign-in. Bump the package version to pull in fixes.
 
-## Why a package, not a template?
-
-Template repos (`create-t3-app`, `create-better-t-stack`, etc.) solve the scaffolding problem but not the **update problem** — once a project is generated, fixes in the upstream template never reach it. This repo takes the opposite trade: ship as much as possible as a versioned dependency so `npm update @you/starter` actually means something.
-
-## Core architecture: re-export shims
-
-Some files physically have to exist in the consumer's repo (Next.js route handlers, Drizzle schema entrypoint, etc.). Those become **one-line re-exports** of code that lives in this package:
-
-```ts
-// consumer: app/api/auth/[...all]/route.ts
-export { GET, POST } from "@you/starter/auth-route"
-
-// consumer: db/schema.ts
-export * from "@you/starter/schema"
-
-// consumer: lib/auth.ts
-export { auth } from "@you/starter/auth"
-
-// consumer: app/(auth)/sign-in/page.tsx
-export { default } from "@you/starter/pages/sign-in"
-```
-
-Everything else — Better Auth config, Drizzle schema definitions, email templates, React components, server helpers — lives here and updates via version bump.
-
-## What ships in the package
-
-- **`@you/starter/auth`** — preconfigured Better Auth instance reading `DATABASE_URL`, `BETTER_AUTH_SECRET`, email provider creds from env.
-- **`@you/starter/auth-route`** — the Next.js route handler (`GET`, `POST`) for `/api/auth/[...all]`.
-- **`@you/starter/schema`** — Drizzle table definitions for `users`, `sessions`, `accounts`, `verification_tokens`.
-- **`@you/starter/ui`** — opinionated component library built on Radix primitives (the shadcn trade — see below).
-- **`@you/starter/pages/sign-in`**, **`/sign-up`**, **`/verify-email`** — drop-in Next.js page components.
-- **`@you/starter/email`** — Resend-based email sender + React Email templates for magic links / verification.
-- **`@you/starter/server`** — `getSession()`, `requireAuth()`, middleware helpers.
-
-## What env vars the consumer sets
+## Install
 
 ```bash
-DATABASE_URL=postgres://...
-BETTER_AUTH_SECRET=...
-BETTER_AUTH_URL=https://app.example.com
-RESEND_API_KEY=...
-EMAIL_FROM=auth@example.com
+npm install @naeemba/next-starter
 ```
 
-## Known tradeoffs (decided)
+Peer dependencies: `next >= 14`, `react >= 18`, `react-dom >= 18`.
 
-1. **shadcn becomes "ours, not theirs."** shadcn is copy-paste by design so consumers can edit components freely. Shipping components from a package trades per-project customization for upgradability. We accept this — components are built on Radix primitives and exposed with enough variants/slots to handle 90% of styling needs without forking.
+## Env vars
 
-2. **Drizzle migrations live in the consumer's repo.** Schema definitions come from the package, but `drizzle-kit generate` writes migration SQL into the consumer project. This is fine — migrations are forward-only artifacts, not source. Consumers run their own `drizzle-kit generate` after a schema-changing version bump.
+```bash
+DATABASE_URL=postgres://user:pass@host:5432/db
+BETTER_AUTH_SECRET=<32+ char random string>   # openssl rand -hex 32
+BETTER_AUTH_URL=https://app.example.com
+EMAIL_FROM=auth@example.com                    # optional in dev, required for Resend in prod
+RESEND_API_KEY=...                             # optional — when unset, magic links log to stdout
+```
 
-3. **Next.js version is a peer dependency.** Consumers control the Next version. The package declares a peer range and is tested against the latest.
+## Four shim files in your app
 
-## Open questions to resolve next session
+```ts
+// app/api/auth/[...all]/route.ts
+export { GET, POST } from "@naeemba/next-starter/auth-route"
+```
 
-- [ ] **Package name / scope** — `@<scope>/starter`? Something more specific?
-- [ ] **Monorepo or single package?** — Splitting into `@you/auth`, `@you/ui`, `@you/db` gives finer-grained versioning but more overhead. Lean: start as one package, split later if needed.
-- [ ] **How does the consumer initialize the DB?** — Migration files vs. `drizzle-kit push` vs. a packaged `init` CLI command (`npx @you/starter init`).
-- [ ] **Customization escape hatches** — what's the story when a consumer needs a non-default Better Auth plugin, a custom email template, or a tweaked sign-in page? Options: render-prop components, config overrides, "eject" CLI.
-- [ ] **Versioning policy** — how do we communicate breaking changes (schema migrations, auth config shape) vs. additive ones?
-- [ ] **Testing strategy** — example consumer app in this repo that exercises the full flow on every PR.
+```tsx
+// app/sign-in/page.tsx
+export { default } from "@naeemba/next-starter/pages/sign-in"
+```
 
-## Context from the design discussion
+```ts
+// db/schema.ts
+export * from "@naeemba/next-starter/schema"
+```
 
-The conversation that produced this README was about whether you can have "a repository that has Next, Drizzle, Better Auth, shadcn etc. and I just add it as a dependency, it preconfigures login with email and get some variables to do so."
+```ts
+// drizzle.config.ts
+import { defineConfig } from "drizzle-kit"
+export default defineConfig({
+  schema: "./db/schema.ts",
+  out: "./drizzle",
+  dialect: "postgresql",
+  dbCredentials: { url: process.env.DATABASE_URL! },
+})
+```
 
-First-pass answer was "not as a single dependency, use a template." The follow-up — "but then I have to update every fork manually" — made it clear the update story is the actual requirement, and the re-export-shim pattern above is the way to honor it. This README captures the resulting design so a fresh session can pick up and start implementing.
+Why a `db/schema.ts` shim? drizzle-kit does not follow symlinks and requires a `.ts` schema source — so the cleanest pattern is a one-line re-export that drizzle-kit can read directly.
 
-## Suggested first session
+## First-time setup
 
-1. Decide package name and whether monorepo.
-2. Set up `package.json` with proper `exports` map (subpath exports are essential to this design).
-3. Stand up the Better Auth + Drizzle wiring as the first exported subpath.
-4. Build a minimal example consumer app in `examples/` that imports from the package via workspace protocol and exercises email sign-in end to end.
-5. Iterate on the shim ergonomics — every shim file the consumer has to create is friction; minimize the count.
+```bash
+npx drizzle-kit generate
+npx drizzle-kit migrate
+```
 
-## Note on the current repo state
+That creates the `user`, `session`, `account`, and `verification` tables. Re-run after a package update that changes the schema (release notes will say so).
 
-The directory currently contains a Create React App scaffold (`src/`, `public/`, the CRA-flavored `package.json` and `yarn.lock`). Plan is to force-push over it — none of those files belong in the eventual package shape.
+## Reading the session in a Server Component
+
+```tsx
+import { getSession } from "@naeemba/next-starter/server"
+
+export default async function Page() {
+  const session = await getSession()
+  if (!session) return <a href="/sign-in">Sign in</a>
+  return <p>Hello, {session.user.email}</p>
+}
+```
+
+## Dev experience
+
+If `RESEND_API_KEY` is unset, the magic link is written to your server logs in a line that looks like:
+
+```
+[magic-link-log] email=you@example.com url=http://localhost:3000/api/auth/magic-link/verify?token=...
+```
+
+Copy-click the URL to sign in. This is useful for local dev before you have a Resend account.
+
+If `NODE_ENV=production` and `RESEND_API_KEY` is unset, a warning is printed at boot: magic links going to logs in prod means anyone with log access can sign in as any user.
+
+## TypeScript
+
+This package is ESM-only with subpath `exports`. Your consumer `tsconfig.json` **must** set `moduleResolution` to `"bundler"` (Next 14+ default), `"node16"`, or `"nodenext"`. The legacy `"node"` resolution silently ignores subpath `types` conditions and imports degrade to `any`.
+
+## What ships in this package
+
+| Subpath | What it is |
+|---|---|
+| `@naeemba/next-starter/auth` | Configured Better Auth instance |
+| `@naeemba/next-starter/auth-route` | `GET`, `POST` for `/api/auth/[...all]` |
+| `@naeemba/next-starter/schema` | Drizzle table definitions |
+| `@naeemba/next-starter/db` | Lazy Drizzle client |
+| `@naeemba/next-starter/email` | `sendMagicLink({ to, url })` |
+| `@naeemba/next-starter/pages/sign-in` | Default-exported sign-in page component |
+| `@naeemba/next-starter/server` | `getSession()` |
+
+## Design and rationale
+
+See `docs/superpowers/specs/` and `docs/superpowers/plans/` in the repo for the full v0.1 foundation design and implementation plan — why a package and not a template, the re-export shim pattern, what's deferred to future versions, and the step-by-step build process.
+
+## License
+
+MIT
