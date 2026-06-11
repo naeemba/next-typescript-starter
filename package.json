@@ -1,6 +1,6 @@
 {
   "name": "@naeemba/next-starter",
-  "version": "0.1.4",
+  "version": "0.2.0",
   "description": "Opinionated Next.js + Drizzle + Better Auth starter, shipped as a versioned package.",
   "license": "MIT",
   "repository": {
@@ -16,7 +16,8 @@
   "private": false,
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "UPGRADING.md"
   ],
   "workspaces": [
     "examples/basic"
@@ -29,6 +30,10 @@
     "./auth-route": {
       "types": "./dist/auth-route/index.d.ts",
       "default": "./dist/auth-route/index.js"
+    },
+    "./client": {
+      "types": "./dist/client/index.d.ts",
+      "default": "./dist/client/index.js"
     },
     "./schema": {
       "types": "./dist/schema/index.d.ts",
@@ -62,12 +67,12 @@
     "postversion": "git push --follow-tags"
   },
   "dependencies": {
+    "@react-email/components": "^1.0.12",
+    "@react-email/render": "^2.0.8",
     "better-auth": "^1.6.16",
     "drizzle-orm": "^0.45.2",
     "pg": "^8.21.0",
     "resend": "^6.12.4",
-    "@react-email/components": "^1.0.12",
-    "@react-email/render": "^2.0.8",
     "zod": "^4.4.3"
   },
   "peerDependencies": {
@@ -76,9 +81,12 @@
     "react-dom": ">=18.0.0"
   },
   "devDependencies": {
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/react": "^16.3.2",
     "@types/node": "^22.0.0",
     "@types/pg": "^8.11.0",
     "@types/react": "^19.2.0",
+    "jsdom": "^29.1.1",
     "next": "^16.2.9",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",

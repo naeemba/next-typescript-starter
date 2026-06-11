@@ -4,8 +4,16 @@ import * as schema from "../schema/index.js"
 
 type Db = ReturnType<typeof drizzle<typeof schema>>
 
-let _db: Db | null = null
+export function createDb(databaseUrl: string): Db {
+  if (!databaseUrl) {
+    throw new Error(
+      "[@naeemba/next-starter] createDb requires a non-empty DATABASE_URL connection string."
+    )
+  }
+  return drizzle(new Pool({ connectionString: databaseUrl }), { schema })
+}
 
+let _db: Db | null = null
 function getDb(): Db {
   if (_db) return _db
   const url = process.env.DATABASE_URL
@@ -15,7 +23,7 @@ function getDb(): Db {
         "Set it in your .env or environment before using the `db` client."
     )
   }
-  _db = drizzle(new Pool({ connectionString: url }), { schema })
+  _db = createDb(url)
   return _db
 }
 

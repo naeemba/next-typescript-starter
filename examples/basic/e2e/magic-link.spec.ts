@@ -47,9 +47,9 @@ test("magic-link sign-in works end to end", async ({ page }) => {
 
   await page.goto("/sign-in")
   await page.getByLabel(/email/i).fill(email)
-  await page.getByRole("button", { name: /sign in/i }).click()
+  await page.getByRole("button", { name: /send magic link/i }).click()
 
-  await expect(page.getByRole("heading", { name: /check your inbox/i })).toBeVisible({
+  await expect(page.getByText(/we sent a sign-in link/i)).toBeVisible({
     timeout: 10_000,
   })
 

@@ -2,7 +2,7 @@ export interface EmailArgs {
   to: string
   from: string
   subject: string
-  html: string
+  html: string | undefined
   text: string
 }
 

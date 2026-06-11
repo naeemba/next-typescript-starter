@@ -1,6 +1,8 @@
 # @naeemba/next-starter
 
-Opinionated Next.js + Drizzle + Better Auth starter, shipped as a **versioned npm package** instead of a clone-and-fork template. Add it as a dependency, set env vars, create four shim files, and you have working magic-link email sign-in. Bump the package version to pull in fixes.
+Opinionated Next.js + Drizzle + Better Auth starter, shipped as a **versioned npm package** instead of a clone-and-fork template. Add it as a dependency, set env vars, create a few shim files, and you have working magic-link email sign-in. Bump the package version to pull in fixes.
+
+If you're upgrading from 0.1.x, see [UPGRADING.md](./UPGRADING.md) for the migration steps.
 
 ## Install
 
@@ -20,25 +22,61 @@ EMAIL_FROM=auth@example.com                    # optional in dev, required for R
 RESEND_API_KEY=...                             # optional — when unset, magic links log to stdout
 ```
 
-## Four shim files in your app
+## Setup files in your app
+
+### lib/auth.ts
 
 ```ts
-// app/api/auth/[...all]/route.ts
-export { GET, POST } from "@naeemba/next-starter/auth-route"
+import { createAuth } from "@naeemba/next-starter/auth"
+export const auth = createAuth()
 ```
+
+`createAuth` accepts options for `allowlist` (restrict sign-in to specific email addresses or domains), `session` (override session cookie / expiry settings), and a custom `sendMagicLinkEmail` function if you want to control the email template or provider.
+
+### lib/auth-client.ts
+
+```ts
+"use client"
+import { createAuthClient } from "@naeemba/next-starter/client"
+export const authClient = createAuthClient()
+export const { signIn, signOut, useSession } = authClient
+```
+
+### lib/auth-server.ts
+
+```ts
+import { createServer } from "@naeemba/next-starter/server"
+import { auth } from "./auth"
+export const { getSession, requireSession } = createServer(auth)
+```
+
+### app/api/auth/[...all]/route.ts
+
+```ts
+import { createAuthRoute } from "@naeemba/next-starter/auth-route"
+import { auth } from "@/lib/auth"
+export const { GET, POST } = createAuthRoute(auth)
+```
+
+### app/sign-in/page.tsx
 
 ```tsx
-// app/sign-in/page.tsx
-export { default } from "@naeemba/next-starter/pages/sign-in"
+import { SignInPage } from "@naeemba/next-starter/pages/sign-in"
+import { authClient } from "@/lib/auth-client"
+export default function Page() {
+  return <SignInPage authClient={authClient} />
+}
 ```
 
+### db/schema.ts
+
 ```ts
-// db/schema.ts
 export * from "@naeemba/next-starter/schema"
 ```
 
+### drizzle.config.ts
+
 ```ts
-// drizzle.config.ts
 import { defineConfig } from "drizzle-kit"
 export default defineConfig({
   schema: "./db/schema.ts",
@@ -61,15 +99,16 @@ That creates the `user`, `session`, `account`, and `verification` tables. Re-run
 
 ## Reading the session in a Server Component
 
-```tsx
-import { getSession } from "@naeemba/next-starter/server"
+```ts
+import { requireSession } from "@/lib/auth-server"
 
 export default async function Page() {
-  const session = await getSession()
-  if (!session) return <a href="/sign-in">Sign in</a>
-  return <p>Hello, {session.user.email}</p>
+  const { user } = await requireSession()
+  return <div>Signed in as {user.email}</div>
 }
 ```
+
+Use `getSession` instead of `requireSession` if you want to handle the unauthenticated case yourself (it returns `null` rather than redirecting).
 
 ## Dev experience
 
@@ -91,13 +130,14 @@ This package is ESM-only with subpath `exports`. Your consumer `tsconfig.json` *
 
 | Subpath | What it is |
 |---|---|
-| `@naeemba/next-starter/auth` | Configured Better Auth instance |
-| `@naeemba/next-starter/auth-route` | `GET`, `POST` for `/api/auth/[...all]` |
+| `@naeemba/next-starter/auth` | `createAuth()` factory |
+| `@naeemba/next-starter/client` | `createAuthClient()` factory |
+| `@naeemba/next-starter/auth-route` | `createAuthRoute(auth)` — returns `GET`, `POST` handlers |
 | `@naeemba/next-starter/schema` | Drizzle table definitions |
 | `@naeemba/next-starter/db` | Lazy Drizzle client |
 | `@naeemba/next-starter/email` | `sendMagicLink({ to, url })` |
-| `@naeemba/next-starter/pages/sign-in` | Default-exported sign-in page component |
-| `@naeemba/next-starter/server` | `getSession()` |
+| `@naeemba/next-starter/pages/sign-in` | Named-exported `SignInPage` component |
+| `@naeemba/next-starter/server` | `createServer(auth)` — returns `getSession`, `requireSession` |
 
 ## Design and rationale
 
