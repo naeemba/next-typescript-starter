@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 
-const consoleSpy = vi.fn(async () => {})
+const consoleSpy = vi.fn<(args: any) => Promise<void>>(async () => {})
 vi.mock("../src/email/console", () => ({ sendViaConsole: consoleSpy }))
-vi.mock("../src/email/resend", () => ({ sendViaResend: vi.fn(async () => {}) }))
+vi.mock("../src/email/resend", () => ({ sendViaResend: vi.fn<(args: any) => Promise<void>>(async () => {}) }))
 
 describe("sendMagicLink template override", () => {
   let originalKey: string | undefined
@@ -26,7 +26,7 @@ describe("sendMagicLink template override", () => {
   it("uses the built-in template when no override provided", async () => {
     const { sendMagicLink } = await import("../src/email/index")
     await sendMagicLink({ to: "a@example.com", url: "https://app/verify?token=1" })
-    expect(consoleSpy.mock.calls[0][0]).toMatchObject({
+    expect(consoleSpy.mock.calls[0]![0]).toMatchObject({
       to: "a@example.com",
       subject: "Sign in to your account",
       from: "default@example.com",
@@ -44,7 +44,7 @@ describe("sendMagicLink template override", () => {
         text: `Open ${url} within ${expiresIn / 60} minutes.`,
       }),
     })
-    expect(consoleSpy.mock.calls[0][0]).toMatchObject({
+    expect(consoleSpy.mock.calls[0]![0]).toMatchObject({
       to: "a@example.com",
       subject: "Your Studio sign-in link",
       from: "noreply@studio.example",
@@ -59,6 +59,6 @@ describe("sendMagicLink template override", () => {
       url: "https://app/x",
       template: async ({ url }) => ({ subject: "Async subj", text: url }),
     })
-    expect(consoleSpy.mock.calls[0][0].subject).toBe("Async subj")
+    expect(consoleSpy.mock.calls[0]![0].subject).toBe("Async subj")
   })
 })

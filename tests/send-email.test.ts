@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 
-const consoleSpy = vi.fn(async () => {})
-const resendSpy = vi.fn(async () => {})
+const consoleSpy = vi.fn<(args: any) => Promise<void>>(async () => {})
+const resendSpy = vi.fn<(args: any) => Promise<void>>(async () => {})
 
 vi.mock("../src/email/console", () => ({ sendViaConsole: consoleSpy }))
 vi.mock("../src/email/resend", () => ({ sendViaResend: resendSpy }))
@@ -31,7 +31,7 @@ describe("sendEmail transport selection", () => {
     await sendEmail({ to: "a@example.com", subject: "Hi", text: "plain" })
     expect(consoleSpy).toHaveBeenCalledTimes(1)
     expect(resendSpy).not.toHaveBeenCalled()
-    expect(consoleSpy.mock.calls[0][0]).toMatchObject({
+    expect(consoleSpy.mock.calls[0]![0]).toMatchObject({
       to: "a@example.com",
       from: "auth@example.com",
       subject: "Hi",
@@ -53,7 +53,7 @@ describe("sendEmail transport selection", () => {
     process.env.EMAIL_FROM = "default@example.com"
     const { sendEmail } = await import("../src/email/index")
     await sendEmail({ to: "a@example.com", from: "custom@example.com", subject: "Hi", text: "x" })
-    expect(consoleSpy.mock.calls[0][0].from).toBe("custom@example.com")
+    expect(consoleSpy.mock.calls[0]![0].from).toBe("custom@example.com")
   })
 
   it("throws when no `from` and no EMAIL_FROM env", async () => {
@@ -71,6 +71,6 @@ describe("sendEmail transport selection", () => {
     const { sendEmail } = await import("../src/email/index")
     await sendEmail({ to: "a@example.com", subject: "Hi", text: "plain only" })
     expect(resendSpy).toHaveBeenCalledTimes(1)
-    expect(resendSpy.mock.calls[0][0].html).toBeUndefined()
+    expect(resendSpy.mock.calls[0]![0].html).toBeUndefined()
   })
 })
