@@ -64,4 +64,13 @@ describe("sendEmail transport selection", () => {
       /EMAIL_FROM|from/
     )
   })
+
+  it("passes html as undefined (not empty string) when no html provided", async () => {
+    process.env.RESEND_API_KEY = "re_test"
+    process.env.EMAIL_FROM = "auth@example.com"
+    const { sendEmail } = await import("../src/email/index")
+    await sendEmail({ to: "a@example.com", subject: "Hi", text: "plain only" })
+    expect(resendSpy).toHaveBeenCalledTimes(1)
+    expect(resendSpy.mock.calls[0][0].html).toBeUndefined()
+  })
 })

@@ -37,7 +37,7 @@ export async function sendEmail(args: EmailArgs): Promise<void> {
     to,
     from,
     subject: args.subject,
-    html: html ?? "",
+    html,
     text,
   }
 
