@@ -20,8 +20,17 @@ const EnvSchema = z.object({
 
 export type Env = z.infer<typeof EnvSchema>
 
-export function parseEnv(input: Record<string, string | undefined> = process.env): Env {
-  const result = EnvSchema.safeParse(input)
+export type EnvOverrides = Partial<Record<keyof Env, string | undefined>>
+
+export function parseEnv(
+  input: Record<string, string | undefined> = process.env,
+  overrides: EnvOverrides = {}
+): Env {
+  const merged: Record<string, string | undefined> = { ...input }
+  for (const [k, v] of Object.entries(overrides)) {
+    if (v !== undefined) merged[k] = v
+  }
+  const result = EnvSchema.safeParse(merged)
   if (result.success) return result.data
   const formatted = result.error.issues
     .map((i) => `  • ${i.path.join(".") || "(root)"}: ${i.message}`)
