@@ -17,8 +17,8 @@ export function createAuthClient(
 ): ReturnType<typeof betterAuthCreateClient> {
   const baseURL =
     opts.baseURL ??
-    (typeof process !== "undefined"
-      ? process.env.NEXT_PUBLIC_BETTER_AUTH_URL
+    (typeof (globalThis as { process?: { env?: Record<string, string | undefined> } }).process !== "undefined"
+      ? (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env?.["NEXT_PUBLIC_BETTER_AUTH_URL"]
       : undefined)
   return betterAuthCreateClient({
     baseURL,
