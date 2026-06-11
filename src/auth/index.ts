@@ -8,6 +8,30 @@ import { parseEnv } from "./config.js"
 
 type DrizzleAdapterDb = Parameters<typeof drizzleAdapter>[0]
 
+interface BuildSendMagicLinkOpts {
+  magicLinkExpiresIn: number
+  allowlist?: (email: string) => boolean | Promise<boolean>
+  customTemplate?: (args: { to: string; url: string; expiresIn: number }) =>
+    Promise<MagicLinkEmailFields> | MagicLinkEmailFields
+}
+
+function buildSendMagicLink(opts: BuildSendMagicLinkOpts) {
+  return async ({ email, url }: { email: string; url: string }) => {
+    if (opts.allowlist) {
+      const allowed = await opts.allowlist(email)
+      if (!allowed) return
+    }
+    await sendMagicLink({
+      to: email,
+      url,
+      expiresIn: opts.magicLinkExpiresIn,
+      template: opts.customTemplate,
+    })
+  }
+}
+
+export const __testHooks = { buildSendMagicLink } as const
+
 export interface CreateAuthOptions {
   databaseUrl?: string
   secret?: string
@@ -56,18 +80,11 @@ export function createAuth(opts: CreateAuthOptions = {}): Auth {
     plugins: [
       magicLink({
         expiresIn: magicLinkExpiresIn,
-        sendMagicLink: async ({ email, url }) => {
-          if (allowlist) {
-            const allowed = await allowlist(email)
-            if (!allowed) return
-          }
-          await sendMagicLink({
-            to: email,
-            url,
-            expiresIn: magicLinkExpiresIn,
-            template: customTemplate,
-          })
-        },
+        sendMagicLink: buildSendMagicLink({
+          magicLinkExpiresIn,
+          allowlist,
+          customTemplate,
+        }),
       }),
     ],
   }
