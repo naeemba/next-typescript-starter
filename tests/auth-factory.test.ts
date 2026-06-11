@@ -44,21 +44,13 @@ describe("createAuth", () => {
     await expect(import("../src/auth/index")).resolves.toBeDefined()
   })
 
-  it("accepts an explicit Drizzle client via opts.db", async () => {
-    Object.assign(process.env, validEnv)
+  it("accepts opts.db without requiring DATABASE_URL in env", async () => {
+    process.env = {
+      BETTER_AUTH_SECRET: validEnv.BETTER_AUTH_SECRET,
+      BETTER_AUTH_URL: validEnv.BETTER_AUTH_URL,
+    } as NodeJS.ProcessEnv
     const { createAuth } = await import("../src/auth/index")
-    const fakeDb = { select: () => {}, insert: () => {} } as unknown as Parameters<
-      typeof createAuth
-    >[0] extends infer T
-      ? T extends { db?: infer D }
-        ? D
-        : never
-      : never
-    expect(() =>
-      createAuth({
-        db: fakeDb,
-        databaseUrl: validEnv.DATABASE_URL,
-      })
-    ).not.toThrow()
+    const fakeDb = { select: () => {}, insert: () => {} } as any
+    expect(() => createAuth({ db: fakeDb })).not.toThrow()
   })
 })
