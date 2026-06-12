@@ -14,10 +14,29 @@
   "type": "module",
   "sideEffects": false,
   "private": false,
+  "keywords": [
+    "nextjs",
+    "next-starter",
+    "better-auth",
+    "drizzle",
+    "drizzle-orm",
+    "postgres",
+    "magic-link",
+    "passkey",
+    "webauthn",
+    "google-oauth",
+    "auth",
+    "starter"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
   "files": [
     "dist",
     "README.md",
-    "UPGRADING.md"
+    "UPGRADING.md",
+    "CHANGELOG.md",
+    "LICENSE"
   ],
   "workspaces": [
     "examples/basic"
@@ -81,9 +100,9 @@
     "zod": "^4.4.3"
   },
   "peerDependencies": {
-    "next": ">=14.0.0",
-    "react": ">=18.0.0",
-    "react-dom": ">=18.0.0"
+    "next": ">=16.0.0",
+    "react": ">=19.0.0",
+    "react-dom": ">=19.0.0"
   },
   "devDependencies": {
     "@testing-library/dom": "^10.4.1",

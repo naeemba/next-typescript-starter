@@ -20,7 +20,7 @@ Each method is opt-in. Enabling one does not require the others.
 npm install @naeemba/next-starter
 ```
 
-Peer dependencies: `next >= 14`, `react >= 18`, `react-dom >= 18`.
+Peer dependencies: `next >= 16`, `react >= 19`, `react-dom >= 19`. Node `>= 20`.
 
 ## Env vars
 
@@ -204,8 +204,14 @@ This package is ESM-only with subpath `exports`. Your consumer `tsconfig.json` *
 
 ## Design and rationale
 
-See `docs/superpowers/specs/` and `docs/superpowers/plans/` in the repo for the full v0.1 foundation design and implementation plan — why a package and not a template, the re-export shim pattern, what's deferred to future versions, and the step-by-step build process.
+This is a **versioned npm package**, not a clone-and-fork template. Consumers depend on it like any other package, set env vars, and create a handful of re-export shim files (`lib/auth.ts`, `lib/auth-client.ts`, etc.) that import from the package's subpath exports. Fixes flow through a `^` bump, not a manual diff against your fork.
+
+The re-export shim pattern is deliberate: it keeps the package's surface minimal (no client/server entry confusion at the Next.js level) while letting consumers customize per-app concerns (`createAuth({ google, passkey, magicLink: { allowlist } })`) in code they own.
+
+## Styling
+
+`<SignInForm/>`, `<SignInPage/>`, and `<PasskeyManager/>` ship with **minimal inline styles** (plain HTML attributes) — no CSS file, no Tailwind classes, no styled-components dependency. Every component accepts a `className` prop you can target with your own CSS / Tailwind layer. The inline styles are intended as a sensible default while bootstrapping; production apps should override them.
 
 ## License
 
-MIT
+MIT — see [LICENSE](./LICENSE).
