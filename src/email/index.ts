@@ -1,6 +1,4 @@
-import { render } from "@react-email/render"
 import type { ReactElement } from "react"
-import { MagicLinkEmail } from "./templates/magic-link.js"
 import { sendViaConsole, type EmailArgs as TransportArgs } from "./console.js"
 import { sendViaResend } from "./resend.js"
 
@@ -28,7 +26,21 @@ export async function sendEmail(args: EmailArgs): Promise<void> {
   }
 
   let html = args.html
-  if (!html && args.react) html = await render(args.react)
+  if (!html && args.react) {
+    const renderMod = await import("@react-email/render").catch((err: unknown) => {
+      const code = (err as NodeJS.ErrnoException).code
+      if (code === "MODULE_NOT_FOUND" || code === "ERR_MODULE_NOT_FOUND") {
+        throw new Error(
+          "[@naeemba/next-starter] Optional peer '@react-email/render' is not installed.\n" +
+            "  Install it with:  npm i @react-email/render\n" +
+            "  Used by: sendEmail({ react })",
+        )
+      }
+      throw err
+    })
+    const { render } = renderMod
+    html = await render(args.react)
+  }
 
   const text = args.text ?? (html ? stripTags(html) : "")
   const to = Array.isArray(args.to) ? args.to.join(", ") : args.to
@@ -88,7 +100,8 @@ async function defaultMagicLinkFields(input: {
   expiresIn: number
   appName?: string
 }): Promise<MagicLinkEmailFields> {
-  const html = await render(MagicLinkEmail({ url: input.url, appName: input.appName }))
+  const { renderDefaultMagicLink } = await import("./templates/magic-link-lazy.js")
+  const html = await renderDefaultMagicLink({ url: input.url, appName: input.appName })
   return {
     subject: "Sign in to your account",
     text: `Sign in: ${input.url}`,
