@@ -42,10 +42,13 @@ export type AuthClient =
   & PasskeyAuthClient
   & SocialAuthClient
 
+// Local declaration so we don't drag @types/node into consumer bundles.
+declare const process: { env?: Record<string, string | undefined> } | undefined
+
 export function createAuthClient(opts: CreateAuthClientOptions = {}): AuthClient {
   const baseURL =
     opts.baseURL ??
-    (typeof process !== "undefined" ? process?.env?.NEXT_PUBLIC_BETTER_AUTH_URL : undefined)
+    (typeof process !== "undefined" ? process?.env?.["NEXT_PUBLIC_BETTER_AUTH_URL"] : undefined)
   return betterAuthCreateClient({
     baseURL,
     plugins: [magicLinkClient(), passkeyClient()],

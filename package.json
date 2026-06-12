@@ -51,6 +51,10 @@
       "types": "./dist/pages/sign-in/index.d.ts",
       "default": "./dist/pages/sign-in/index.js"
     },
+    "./pages/passkey-manager": {
+      "types": "./dist/pages/passkey-manager/index.d.ts",
+      "default": "./dist/pages/passkey-manager/index.js"
+    },
     "./server": {
       "types": "./dist/server/index.d.ts",
       "default": "./dist/server/index.js"
