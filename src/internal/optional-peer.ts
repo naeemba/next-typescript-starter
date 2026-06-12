@@ -1,9 +1,17 @@
 import { createRequire } from "node:module"
+import { pathToFileURL } from "node:url"
 
-// createRequire bound to the package's own location so consumers' module
-// resolution finds packages installed alongside @naeemba/next-starter,
-// not packages relative to this source file path.
-const peerRequire = createRequire(import.meta.url)
+// Primary resolver: bound to the package's own location so consumer-installed
+// peers next to @naeemba/next-starter are visible via normal Node module
+// walk-up. Sufficient under raw Node.
+const packageRequire = createRequire(import.meta.url)
+
+// Fallback resolver: bound to the consumer's working directory. Turbopack
+// (Next.js dev server) rewrites `import.meta.url` to a virtual chunk path
+// that breaks Node's module resolution, so peer lookups from the bundled
+// chunk miss the consumer's node_modules. process.cwd() always points at
+// the consumer's project root in that context.
+const cwdRequire = createRequire(pathToFileURL(process.cwd() + "/").href)
 
 function isModuleNotFound(err: unknown): boolean {
   const code = (err as NodeJS.ErrnoException).code
@@ -28,10 +36,16 @@ function peerErrorMessage(name: string, usedBy: string): string {
  */
 export function loadOptionalPeer<T>(name: string, usedBy: string): T {
   try {
-    return peerRequire(name) as T
+    return packageRequire(name) as T
   } catch (err) {
     if (!isModuleNotFound(err)) throw err
-    throw new Error(peerErrorMessage(name, usedBy))
+    // Retry from CWD — covers the Turbopack/virtualized-import.meta.url case.
+    try {
+      return cwdRequire(name) as T
+    } catch (err2) {
+      if (!isModuleNotFound(err2)) throw err2
+      throw new Error(peerErrorMessage(name, usedBy))
+    }
   }
 }
 

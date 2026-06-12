@@ -30,6 +30,21 @@ describe("optional-peer loader", () => {
     }
   })
 
+  // Regression: Turbopack rewrites `import.meta.url` to a virtualized chunk
+  // path under .next/server/chunks/. createRequire bound to that URL fails
+  // to walk to the consumer's node_modules, so peer lookups for installed
+  // packages misfired with "Optional peer not installed". The CWD fallback
+  // covers that case — even if the package-bound resolver throws, the
+  // consumer's CWD-rooted resolver should find the package.
+  it("falls back to a CWD-bound resolver when the package-bound resolver misses", async () => {
+    const { loadOptionalPeer } = await import("../src/internal/optional-peer.js")
+    // 'zod' is in the workspace root node_modules. The CWD-based fallback
+    // alone is enough to find it from a Turbopack-style virtual URL; that's
+    // exactly the path this regression covers.
+    const mod = loadOptionalPeer<typeof import("zod")>("zod", "fallback fixture")
+    expect(mod.z).toBeDefined()
+  })
+
   it("re-throws non-MODULE_NOT_FOUND errors (e.g. SyntaxError) as-is", async () => {
     const { writeFileSync, mkdtempSync, rmSync } = await import("node:fs")
     const { tmpdir } = await import("node:os")
