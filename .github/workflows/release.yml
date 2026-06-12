@@ -34,6 +34,11 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history + tags so `conventional-changelog -r 1` can walk
+          # back to the previous tag when auto-generating CHANGELOG entries.
+          fetch-depth: 0
+          fetch-tags: true
 
       - uses: actions/setup-node@v4
         with:
@@ -91,30 +96,19 @@ jobs:
       - name: Publish to npm
         run: npm publish --provenance --access public
 
-      - name: Push regenerated CHANGELOG back to main
-        run: |
-          VERSION="${GITHUB_REF#refs/tags/v}"
-          if git diff --quiet -- CHANGELOG.md; then
-            echo "CHANGELOG.md unchanged — nothing to push."
-            exit 0
-          fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          # Save the regenerated CHANGELOG, switch to main, replay the change, push.
-          cp CHANGELOG.md /tmp/CHANGELOG.new
-          git fetch origin main --depth=1
-          git checkout -B main origin/main
-          cp /tmp/CHANGELOG.new CHANGELOG.md
-          git add CHANGELOG.md
-          # `[skip ci]` prevents this push from re-triggering the CI workflow.
-          git commit -m "chore(release): regenerate CHANGELOG.md for v$VERSION [skip ci]"
-          git push origin main
-
+      # Create the GitHub Release BEFORE pushing the regenerated CHANGELOG.
+      # If the push step ever fails (non-fast-forward, branch protection, etc.)
+      # we'd still have a matching GH release for the just-published npm version.
+      # Step is idempotent so re-runs after a partial success can recover.
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="${GITHUB_REF#refs/tags/v}"
+          if gh release view "v$VERSION" >/dev/null 2>&1; then
+            echo "Release v$VERSION already exists — skipping."
+            exit 0
+          fi
           # Extract this version's section from CHANGELOG.md. Matches both
           # hand-written (`## 0.4.0`) and conventional-changelog (`## [0.4.0](url) (date)`)
           # heading shapes. Falls back to GitHub-generated notes if no section is found.
@@ -130,3 +124,33 @@ jobs:
           else
             gh release create "v$VERSION" --title "v$VERSION" --notes-file "$NOTES_FILE"
           fi
+
+      - name: Push regenerated CHANGELOG back to main
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          if git diff --quiet -- CHANGELOG.md; then
+            echo "CHANGELOG.md unchanged — nothing to push."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # Save the regenerated CHANGELOG, switch to main, replay the change, push.
+          cp CHANGELOG.md /tmp/CHANGELOG.new
+          # Retry on non-fast-forward (a maintainer commit landing on main
+          # mid-release would otherwise reject the push and break the workflow).
+          for attempt in 1 2 3; do
+            git fetch origin main
+            git checkout -B main origin/main
+            cp /tmp/CHANGELOG.new CHANGELOG.md
+            git add CHANGELOG.md
+            # `[skip ci]` prevents this push from re-triggering the CI workflow.
+            git commit -m "chore(release): regenerate CHANGELOG.md for v$VERSION [skip ci]"
+            if git push origin main; then
+              exit 0
+            fi
+            echo "Push attempt $attempt rejected — rebasing onto fresh origin/main and retrying." >&2
+            git reset --hard HEAD~1
+            sleep 2
+          done
+          echo "Failed to push CHANGELOG.md after 3 attempts." >&2
+          exit 1
