@@ -9,6 +9,14 @@ import { parseEnv } from "./config.js"
 
 type DrizzleAdapterDb = Parameters<typeof drizzleAdapter>[0]
 
+function normalizeSingleAdmin(input: string | string[] | undefined): Set<string> | undefined {
+  if (input === undefined) return undefined
+  const list = Array.isArray(input) ? input : [input]
+  const trimmed = list.map((e) => e.trim().toLowerCase()).filter((e) => e.length > 0)
+  if (trimmed.length === 0) return undefined
+  return new Set(trimmed)
+}
+
 interface BuildSendMagicLinkOpts {
   magicLinkExpiresIn: number
   allowlist?: (email: string) => boolean | Promise<boolean>
@@ -66,6 +74,16 @@ export interface CreateAuthOptions {
     origin?: string
   }
   accountLinking?: false | { trustedProviders: string[] }
+  /**
+   * Shortcut for locking sign-in to one or more specific emails. Applied as
+   * a case-insensitive exact-match default for `magicLink.allowlist` and
+   * `google.allowlist`. If an explicit allowlist is also passed for a
+   * provider, the explicit callback wins for that provider.
+   *
+   * For google, an emailVerified=false profile is rejected even when the
+   * email matches.
+   */
+  singleAdmin?: string | string[]
 }
 
 export function createAuth(opts: CreateAuthOptions = {}): Auth {
@@ -84,7 +102,10 @@ export function createAuth(opts: CreateAuthOptions = {}): Auth {
   const env = parseEnv(process.env, overrides)
   const db = opts.db ?? createDb(env.DATABASE_URL, createDbOptionsFromEnv(process.env))
   const magicLinkExpiresIn = opts.magicLink?.expiresIn ?? 600
-  const allowlist = opts.magicLink?.allowlist
+  const singleAdminSet = normalizeSingleAdmin(opts.singleAdmin)
+  const allowlist =
+    opts.magicLink?.allowlist ??
+    (singleAdminSet ? (email: string) => singleAdminSet.has(email.trim().toLowerCase()) : undefined)
   const customTemplate = opts.magicLink?.email
 
   const config: BetterAuthOptions = {
@@ -121,7 +142,13 @@ export function createAuth(opts: CreateAuthOptions = {}): Auth {
       clientSecret,
       ...(opts.google.scopes ? { scopes: opts.google.scopes } : {}),
     } satisfies GoogleConfig
-    const googleConfig = opts.google.allowlist
+    const googleAllowlist =
+      opts.google.allowlist ??
+      (singleAdminSet
+        ? (profile: { email: string; emailVerified: boolean }) =>
+            profile.emailVerified && singleAdminSet.has(profile.email.trim().toLowerCase())
+        : undefined)
+    const googleConfig = googleAllowlist
       ? ({
           ...baseGoogle,
           // Gate inside the Google getUserInfo path so the check fires for
@@ -129,7 +156,7 @@ export function createAuth(opts: CreateAuthOptions = {}): Auth {
           // reaches the global user.create.before hook), and does NOT fire
           // for magic-link signups.
           mapProfileToUser: async (profile: { email: string; email_verified: boolean }) => {
-            const ok = await opts.google!.allowlist!({
+            const ok = await googleAllowlist({
               email: profile.email,
               emailVerified: profile.email_verified,
             })
