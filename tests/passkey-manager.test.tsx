@@ -26,13 +26,22 @@ describe("<PasskeyManager/>", () => {
     expect(await screen.findByRole("button", { name: /add a passkey/i })).toBeTruthy()
   })
 
-  it("renders nothing (or the unsupportedCopy) when WebAuthn is unavailable", () => {
+  it("renders the unsupportedCopy wrapped in a div when WebAuthn is unavailable and copy is provided", () => {
     disableWebAuthn()
     const { container } = render(
       <PasskeyManager authClient={makeClient()} unsupportedCopy="Not supported" />,
     )
     expect(screen.queryByRole("button", { name: /add a passkey/i })).toBeNull()
     expect(container.textContent).toContain("Not supported")
+  })
+
+  // JSDoc on `unsupportedCopy` promises "renders nothing" when the default
+  // null is in play; an empty wrapper <div> still occupies a flex/grid track
+  // on settings pages that stack PasskeyManager alongside other rows.
+  it("renders nothing at all when WebAuthn is unavailable and no unsupportedCopy is provided", () => {
+    disableWebAuthn()
+    const { container } = render(<PasskeyManager authClient={makeClient()} />)
+    expect(container.firstChild).toBeNull()
   })
 
   it("calls passkey.addPasskey() on click", async () => {
