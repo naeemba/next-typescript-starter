@@ -81,12 +81,33 @@ export function createMiddleware(opts: CreateMiddlewareOptions) {
   const cookieNames = [`${cookiePrefix}.session_token`, `__Secure-${cookiePrefix}.session_token`]
   const compiled = opts.protect.map((p) => compile(p))
 
+  // Fail loud at construction when a `protect` pattern matches `signInPath`
+  // — that combination would deterministically loop the unauthenticated
+  // redirect. Trailing-slash variants are normalized so this also catches
+  // misconfigurations under `next.config.js: { trailingSlash: true }`.
+  // The runtime short-circuit below stays as a defense-in-depth fallback,
+  // but the boot-time error is the real fix: it surfaces the misconfig in
+  // the consumer's logs at module load instead of as a browser redirect loop.
+  const signInPathNoSlash = signInPath.replace(/\/+$/, "")
+  const matchesSignIn = (re: RegExp) =>
+    re.test(signInPath) || re.test(signInPathNoSlash) || re.test(`${signInPathNoSlash}/`)
+  const offending = opts.protect.find((_p, i) => matchesSignIn(compiled[i]!))
+  if (offending !== undefined) {
+    throw new Error(
+      `[@naeemba/next-starter] createMiddleware: 'protect' pattern '${offending}' matches signInPath ` +
+        `('${signInPath}') and would cause an infinite redirect loop. Narrow the pattern, exclude ` +
+        `the sign-in path, or pass a different signInPath.`,
+    )
+  }
+
   return function middleware(req: NextRequest): NextResponse {
     const pathname = req.nextUrl.pathname
-    // Short-circuit signInPath: if a `protect` pattern matches it (e.g.
-    // `/**`), redirecting unauthenticated traffic to signInPath would match
-    // again and trigger an infinite client redirect loop.
-    if (pathname === signInPath) return NextResponse.next()
+    // Defense-in-depth: even with the boot-time guard above, a consumer
+    // rewrite upstream could still hand us `/sign-in/` under
+    // `trailingSlash: true`. Normalize both sides before comparing.
+    if (pathname === signInPath || pathname.replace(/\/+$/, "") === signInPathNoSlash) {
+      return NextResponse.next()
+    }
     const isProtected = compiled.some((re) => re.test(pathname))
     if (!isProtected) return NextResponse.next()
 

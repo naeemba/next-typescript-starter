@@ -159,19 +159,35 @@ describe("createMiddleware", () => {
     expect(() => createMiddleware({ protect: [] })).toThrow(/'protect' must be a non-empty array/)
   })
 
-  // Without the short-circuit, `protect: ['/**']` matches `/sign-in` and the
-  // unauthenticated redirect loops forever (ERR_TOO_MANY_REDIRECTS in browser).
-  it("does NOT redirect when the request is already at signInPath, even if protect matches it", async () => {
+  // The construction-time guard is the real fix for the redirect-loop class
+  // of bug — it surfaces misconfigurations at module load instead of letting
+  // the loop manifest as ERR_TOO_MANY_REDIRECTS in the browser.
+  it("throws at construction when a protect pattern matches the default signInPath", async () => {
     const { createMiddleware } = await import("../src/middleware/index.js")
-    const mw = createMiddleware({ protect: ["/**"] })
-    expect(mw(makeReq({ pathname: "/sign-in" }) as unknown as Parameters<typeof mw>[0])).toEqual({ type: "next" })
-    expect(mw(makeReq({ pathname: "/sign-in", search: "?callbackUrl=/admin" }) as unknown as Parameters<typeof mw>[0])).toEqual({ type: "next" })
+    expect(() => createMiddleware({ protect: ["/**"] })).toThrow(/infinite redirect loop/)
   })
 
-  it("does NOT redirect when a custom signInPath is matched by protect", async () => {
+  it("throws at construction when a protect pattern matches a custom signInPath", async () => {
     const { createMiddleware } = await import("../src/middleware/index.js")
-    const mw = createMiddleware({ protect: ["/login", "/admin/**"], signInPath: "/login" })
-    expect(mw(makeReq({ pathname: "/login" }) as unknown as Parameters<typeof mw>[0])).toEqual({ type: "next" })
-    expect(mw(makeReq({ pathname: "/admin/x" }) as unknown as Parameters<typeof mw>[0])).toMatchObject({ type: "redirect" })
+    expect(() => createMiddleware({ protect: ["/login", "/admin/**"], signInPath: "/login" })).toThrow(
+      /infinite redirect loop/,
+    )
+  })
+
+  // trailingSlash:true in next.config.js makes Next normalize URLs to
+  // `/sign-in/`. The boot-time guard has to catch this shape too, or the
+  // consumer ships the loop they thought was already prevented.
+  it("throws when protect matches the trailing-slash variant of signInPath", async () => {
+    const { createMiddleware } = await import("../src/middleware/index.js")
+    expect(() => createMiddleware({ protect: ["/sign-in/"] })).toThrow(/infinite redirect loop/)
+  })
+
+  // Defense-in-depth: even if a consumer rewrite layer hands us a
+  // trailing-slash pathname at request time (without it being declared in
+  // `protect`), the runtime short-circuit still passes through.
+  it("passes through requests to signInPath with a trailing slash", async () => {
+    const { createMiddleware } = await import("../src/middleware/index.js")
+    const mw = createMiddleware({ protect: ["/admin/:path*"] })
+    expect(mw(makeReq({ pathname: "/sign-in/" }) as unknown as Parameters<typeof mw>[0])).toEqual({ type: "next" })
   })
 })
