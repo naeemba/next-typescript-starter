@@ -66,6 +66,10 @@
       "types": "./dist/email/index.d.ts",
       "default": "./dist/email/index.js"
     },
+    "./middleware": {
+      "types": "./dist/middleware/index.d.ts",
+      "default": "./dist/middleware/index.js"
+    },
     "./pages/sign-in": {
       "types": "./dist/pages/sign-in/index.d.ts",
       "default": "./dist/pages/sign-in/index.js"
