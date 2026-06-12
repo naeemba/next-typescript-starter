@@ -13,8 +13,21 @@ function normalizeSingleAdmin(input: string | string[] | undefined): Set<string>
   if (input === undefined) return undefined
   const list = Array.isArray(input) ? input : [input]
   const trimmed = list.map((e) => e.trim().toLowerCase()).filter((e) => e.length > 0)
-  if (trimmed.length === 0) return undefined
+  // Fail loud: silently treating empty input as "no allowlist" would invert
+  // the user's intent ("lock to these emails") into "allow everyone" — a
+  // security regression when `singleAdmin: process.env.ADMIN_EMAIL ?? ""`
+  // resolves to empty.
+  if (trimmed.length === 0) {
+    throw new Error(
+      "[@naeemba/next-starter] singleAdmin was set but contained no non-empty emails. " +
+        "Pass at least one email or omit singleAdmin entirely.",
+    )
+  }
   return new Set(trimmed)
+}
+
+function matchesSingleAdmin(set: Set<string>, email: string): boolean {
+  return set.has(email.trim().toLowerCase())
 }
 
 interface BuildSendMagicLinkOpts {
@@ -92,10 +105,11 @@ export function createAuth(opts: CreateAuthOptions = {}): Auth {
     BETTER_AUTH_URL: opts.baseURL,
   }
   if (opts.databaseUrl) overrides.DATABASE_URL = opts.databaseUrl
-  // When opts.db is provided, DATABASE_URL is not needed. Use a placeholder
-  // that satisfies the URL schema so parseEnv stops complaining about it.
-  // (We never read env.DATABASE_URL after this when opts.db is set.)
-  if (opts.db && !overrides.DATABASE_URL && !process.env.DATABASE_URL) {
+  // When opts.db is provided, DATABASE_URL is not needed. Force a placeholder
+  // override regardless of what's in process.env — otherwise a stale/malformed
+  // DATABASE_URL (e.g. a non-postgres URL from a consumer using a different
+  // driver) would still fail parseEnv even though opts.db means we never read it.
+  if (opts.db && !overrides.DATABASE_URL) {
     overrides.DATABASE_URL = "postgres://unused:unused@localhost/unused"
   }
 
@@ -105,7 +119,7 @@ export function createAuth(opts: CreateAuthOptions = {}): Auth {
   const singleAdminSet = normalizeSingleAdmin(opts.singleAdmin)
   const allowlist =
     opts.magicLink?.allowlist ??
-    (singleAdminSet ? (email: string) => singleAdminSet.has(email.trim().toLowerCase()) : undefined)
+    (singleAdminSet ? (email: string) => matchesSingleAdmin(singleAdminSet, email) : undefined)
   const customTemplate = opts.magicLink?.email
 
   const config: BetterAuthOptions = {
@@ -146,7 +160,7 @@ export function createAuth(opts: CreateAuthOptions = {}): Auth {
       opts.google.allowlist ??
       (singleAdminSet
         ? (profile: { email: string; emailVerified: boolean }) =>
-            profile.emailVerified && singleAdminSet.has(profile.email.trim().toLowerCase())
+            profile.emailVerified && matchesSingleAdmin(singleAdminSet, profile.email)
         : undefined)
     const googleConfig = googleAllowlist
       ? ({

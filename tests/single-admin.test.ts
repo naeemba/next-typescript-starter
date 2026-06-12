@@ -21,6 +21,22 @@ beforeEach(() => {
 })
 afterEach(() => restoreAuthEnv())
 
+describe("singleAdmin — invalid inputs", () => {
+  // `singleAdmin: process.env.ADMIN_EMAIL ?? ""` would otherwise silently
+  // disable the allowlist and open sign-in to everyone. Fail loud instead.
+  it("throws when the string form is empty / whitespace", async () => {
+    const { createAuth } = await import("../src/auth/index.js")
+    expect(() => createAuth({ singleAdmin: "" })).toThrow(/no non-empty emails/)
+    expect(() => createAuth({ singleAdmin: "   " })).toThrow(/no non-empty emails/)
+  })
+
+  it("throws when the array form is empty or only whitespace entries", async () => {
+    const { createAuth } = await import("../src/auth/index.js")
+    expect(() => createAuth({ singleAdmin: [] })).toThrow(/no non-empty emails/)
+    expect(() => createAuth({ singleAdmin: ["", "  "] })).toThrow(/no non-empty emails/)
+  })
+})
+
 describe("singleAdmin — magic-link allowlist defaulting", () => {
   it("string form: allowed email triggers sendMagicLink, non-match is silently skipped", async () => {
     const { createAuth } = await import("../src/auth/index.js")
