@@ -67,6 +67,7 @@
     "postversion": "git push --follow-tags"
   },
   "dependencies": {
+    "@better-auth/passkey": "^1.6.16",
     "@react-email/components": "^1.0.12",
     "@react-email/render": "^2.0.8",
     "better-auth": "^1.6.16",

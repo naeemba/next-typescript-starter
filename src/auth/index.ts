@@ -1,5 +1,6 @@
 import { betterAuth, type Auth, type BetterAuthOptions } from "better-auth"
 import { magicLink } from "better-auth/plugins"
+import { passkey as passkeyPlugin } from "@better-auth/passkey"
 import { drizzleAdapter } from "better-auth/adapters/drizzle"
 import { createDb } from "../db/index.js"
 import * as schema from "../schema/index.js"
@@ -63,8 +64,6 @@ export interface CreateAuthOptions {
     rpName?: string
     rpID?: string
     origin?: string
-    allowlist?: (user: { id: string; email: string }) =>
-      boolean | Promise<boolean>
   }
   accountLinking?: false | { trustedProviders: string[] }
 }
@@ -156,6 +155,16 @@ export function createAuth(opts: CreateAuthOptions = {}): Auth {
         },
       }
     }
+  }
+
+  if (opts.passkey) {
+    const url = new URL(env.BETTER_AUTH_URL)
+    const plugin = passkeyPlugin({
+      rpName: opts.passkey.rpName ?? url.hostname,
+      rpID: opts.passkey.rpID ?? url.hostname,
+      origin: opts.passkey.origin ?? env.BETTER_AUTH_URL,
+    })
+    config.plugins = [...(config.plugins ?? []), plugin as unknown as NonNullable<BetterAuthOptions["plugins"]>[number]]
   }
 
   if (opts.session) {

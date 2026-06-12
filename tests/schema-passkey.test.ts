@@ -7,7 +7,7 @@ const DrizzleColumns = Symbol.for("drizzle:Columns")
 describe("passkey schema", () => {
   it("defines a 'passkey' table with the required columns", () => {
     const cols = Object.keys(
-      (passkey as unknown as Record<symbol, Record<string, unknown>>)[DrizzleColumns]
+      (passkey as unknown as Record<symbol, Record<string, unknown>>)[DrizzleColumns] ?? {}
     )
     expect(cols.sort()).toEqual(
       [

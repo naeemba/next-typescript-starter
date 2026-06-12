@@ -15,8 +15,6 @@ describe("CreateAuthOptions", () => {
         rpName?: string
         rpID?: string
         origin?: string
-        allowlist?: (user: { id: string; email: string }) =>
-          boolean | Promise<boolean>
       }
       accountLinking?: false | { trustedProviders: string[] }
     }>()
