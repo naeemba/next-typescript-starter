@@ -16,6 +16,8 @@ const EnvSchema = z.object({
     .url("BETTER_AUTH_URL must be a valid URL (e.g. https://app.example.com)"),
   EMAIL_FROM: z.string().email().optional(),
   RESEND_API_KEY: z.string().optional(),
+  GOOGLE_CLIENT_ID: z.string().optional(),
+  GOOGLE_CLIENT_SECRET: z.string().optional(),
 })
 
 export type Env = z.infer<typeof EnvSchema>

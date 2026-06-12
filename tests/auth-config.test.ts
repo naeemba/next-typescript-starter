@@ -35,6 +35,28 @@ describe("parseEnv", () => {
     const env = parseEnv(without)
     expect(env.EMAIL_FROM).toBeUndefined()
   })
+
+  it("accepts optional GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET", () => {
+    const env = parseEnv({
+      DATABASE_URL: "postgres://u:p@h/d",
+      BETTER_AUTH_SECRET: "x".repeat(32),
+      BETTER_AUTH_URL: "https://app.example.com",
+      GOOGLE_CLIENT_ID: "google-client-id",
+      GOOGLE_CLIENT_SECRET: "google-client-secret",
+    })
+    expect(env.GOOGLE_CLIENT_ID).toBe("google-client-id")
+    expect(env.GOOGLE_CLIENT_SECRET).toBe("google-client-secret")
+  })
+
+  it("treats GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET as optional", () => {
+    const env = parseEnv({
+      DATABASE_URL: "postgres://u:p@h/d",
+      BETTER_AUTH_SECRET: "x".repeat(32),
+      BETTER_AUTH_URL: "https://app.example.com",
+    })
+    expect(env.GOOGLE_CLIENT_ID).toBeUndefined()
+    expect(env.GOOGLE_CLIENT_SECRET).toBeUndefined()
+  })
 })
 
 describe("parseEnv with overrides", () => {
