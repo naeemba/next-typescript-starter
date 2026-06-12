@@ -52,6 +52,21 @@ export interface CreateAuthOptions {
     email?: (args: { to: string; url: string; expiresIn: number }) =>
       Promise<MagicLinkEmailFields> | MagicLinkEmailFields
   }
+  google?: {
+    clientId?: string
+    clientSecret?: string
+    scopes?: string[]
+    allowlist?: (profile: { email: string; emailVerified: boolean }) =>
+      boolean | Promise<boolean>
+  }
+  passkey?: {
+    rpName?: string
+    rpID?: string
+    origin?: string
+    allowlist?: (user: { id: string; email: string }) =>
+      boolean | Promise<boolean>
+  }
+  accountLinking?: false | { trustedProviders: string[] }
 }
 
 export function createAuth(opts: CreateAuthOptions = {}): Auth {
