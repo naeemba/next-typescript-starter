@@ -95,28 +95,38 @@
   },
   "dependencies": {
     "@better-auth/passkey": "^1.6.16",
-    "@react-email/components": "^1.0.12",
-    "@react-email/render": "^2.0.8",
     "better-auth": "^1.6.16",
     "drizzle-orm": "^0.45.2",
-    "postgres": "^3.4.9",
-    "resend": "^6.12.4",
     "zod": "^4.4.3"
   },
   "peerDependencies": {
     "next": ">=16.0.0",
     "react": ">=19.0.0",
-    "react-dom": ">=19.0.0"
+    "react-dom": ">=19.0.0",
+    "@react-email/components": ">=1.0.0",
+    "@react-email/render": ">=2.0.0",
+    "postgres": ">=3.4.0",
+    "resend": ">=6.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@react-email/components": { "optional": true },
+    "@react-email/render": { "optional": true },
+    "postgres": { "optional": true },
+    "resend": { "optional": true }
   },
   "devDependencies": {
+    "@react-email/components": "^1.0.12",
+    "@react-email/render": "^2.0.8",
     "@testing-library/dom": "^10.4.1",
     "@testing-library/react": "^16.3.2",
     "@types/node": "^22.0.0",
     "@types/react": "^19.2.0",
     "jsdom": "^29.1.1",
     "next": "^16.2.9",
+    "postgres": "^3.4.9",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
+    "resend": "^6.12.4",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
     "vitest": "^4.1.8"
