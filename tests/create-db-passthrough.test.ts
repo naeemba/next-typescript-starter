@@ -4,21 +4,27 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 // reaches the driver, and short-circuit the drizzle wrapper so the spy
 // can return a minimal stub. Without the drizzle mock, postgres-js
 // `client.options.parsers` is null and drizzle blows up during init.
-vi.mock("postgres", () => {
-  const postgres = vi.fn(() => ({ end: vi.fn(), unsafe: vi.fn() }))
-  return { default: postgres }
-})
+//
+// Because createDb now lazy-loads postgres via loadOptionalPeer (createRequire),
+// we mock the optional-peer helper to return our spy instead of mocking the
+// 'postgres' module directly (which vitest's ESM mock wouldn't intercept through
+// createRequire anyway).
+const postgresSpy = vi.fn(() => ({ end: vi.fn(), unsafe: vi.fn() }))
+
+vi.mock("../src/internal/optional-peer", () => ({
+  loadOptionalPeer: vi.fn(<T>(_name: string, _usedBy: string): T => postgresSpy as T),
+}))
+
 vi.mock("drizzle-orm/postgres-js", () => ({
   drizzle: vi.fn(() => ({ select: vi.fn(), insert: vi.fn(), $client: {} })),
 }))
 
-import postgres from "postgres"
 import { createDb } from "../src/db/index"
 
 const URL = "postgres://u:p@h:5432/d"
 
 beforeEach(() => {
-  vi.mocked(postgres).mockClear()
+  postgresSpy.mockClear()
 })
 
 describe("createDb → postgres() passthrough", () => {
@@ -28,8 +34,8 @@ describe("createDb → postgres() passthrough", () => {
 
   it("defaults to prepare:true, max:10, idle_timeout:20 when no opts are passed", () => {
     createDb(URL)
-    expect(postgres).toHaveBeenCalledTimes(1)
-    expect(postgres).toHaveBeenCalledWith(
+    expect(postgresSpy).toHaveBeenCalledTimes(1)
+    expect(postgresSpy).toHaveBeenCalledWith(
       URL,
       expect.objectContaining({ prepare: true, max: 10, idle_timeout: 20 }),
     )
@@ -37,7 +43,7 @@ describe("createDb → postgres() passthrough", () => {
 
   it("translates the camelCase idleTimeout opt to the snake_case idle_timeout postgres.js expects", () => {
     createDb(URL, { idleTimeout: 5 })
-    expect(postgres).toHaveBeenCalledWith(
+    expect(postgresSpy).toHaveBeenCalledWith(
       URL,
       expect.objectContaining({ idle_timeout: 5 }),
     )
@@ -45,7 +51,7 @@ describe("createDb → postgres() passthrough", () => {
 
   it("passes prepare:false through (the Supabase/Neon transaction-pool fix)", () => {
     createDb("postgres://u:p@host:6543/d", { prepare: false })
-    expect(postgres).toHaveBeenCalledWith(
+    expect(postgresSpy).toHaveBeenCalledWith(
       "postgres://u:p@host:6543/d",
       expect.objectContaining({ prepare: false }),
     )
@@ -53,7 +59,7 @@ describe("createDb → postgres() passthrough", () => {
 
   it("passes max through unchanged", () => {
     createDb(URL, { max: 25 })
-    expect(postgres).toHaveBeenCalledWith(
+    expect(postgresSpy).toHaveBeenCalledWith(
       URL,
       expect.objectContaining({ max: 25 }),
     )
