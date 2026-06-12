@@ -1,4 +1,5 @@
 import type { ReactElement } from "react"
+import { loadOptionalPeerAsync } from "../internal/optional-peer.js"
 import { sendViaConsole, type EmailArgs as TransportArgs } from "./console.js"
 import { sendViaResend } from "./resend.js"
 
@@ -27,18 +28,11 @@ export async function sendEmail(args: EmailArgs): Promise<void> {
 
   let html = args.html
   if (!html && args.react) {
-    const renderMod = await import("@react-email/render").catch((err: unknown) => {
-      const code = (err as NodeJS.ErrnoException).code
-      if (code === "MODULE_NOT_FOUND" || code === "ERR_MODULE_NOT_FOUND") {
-        throw new Error(
-          "[@naeemba/next-starter] Optional peer '@react-email/render' is not installed.\n" +
-            "  Install it with:  npm i @react-email/render\n" +
-            "  Used by: sendEmail({ react })",
-        )
-      }
-      throw err
-    })
-    const { render } = renderMod
+    const { render } = await loadOptionalPeerAsync(
+      "@react-email/render",
+      () => import("@react-email/render"),
+      "sendEmail({ react })",
+    )
     html = await render(args.react)
   }
 
