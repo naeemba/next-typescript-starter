@@ -112,46 +112,55 @@ export function createAuth(opts: CreateAuthOptions = {}): Auth {
           "(either as opts.google.clientId/clientSecret or in process.env)."
       )
     }
+    type GoogleConfig = NonNullable<BetterAuthOptions["socialProviders"]>["google"]
+    let googleConfig = {
+      clientId,
+      clientSecret,
+      ...(opts.google.scopes ? { scopes: opts.google.scopes } : {}),
+    } as GoogleConfig
+    if (opts.google.allowlist) {
+      const googleAllowlist = opts.google.allowlist
+      // Gate inside the Google getUserInfo path so the check fires for both
+      // first-time signup AND account linking (linkAccount never reaches the
+      // global user.create.before hook), and does NOT fire for magic-link
+      // signups (the global hook would over-apply across providers).
+      googleConfig = {
+        ...googleConfig,
+        mapProfileToUser: async (profile) => {
+          const ok = await googleAllowlist({
+            email: profile.email,
+            emailVerified: profile.email_verified,
+          })
+          if (!ok) {
+            throw new Error(
+              "[@naeemba/next-starter] Sign-in rejected by google.allowlist."
+            )
+          }
+          return {}
+        },
+      } as GoogleConfig
+    }
     config.socialProviders = {
       ...(config.socialProviders ?? {}),
-      google: {
-        clientId,
-        clientSecret,
-        ...(opts.google.scopes ? { scopes: opts.google.scopes } : {}),
-      },
+      google: googleConfig,
     }
+  }
 
-    if (opts.accountLinking !== false) {
+  // accountLinking is independent of opts.google: a consumer may set it to
+  // pre-configure trustedProviders for a provider they'll add later. When
+  // google is enabled, it's auto-added to the trusted set rather than
+  // silently dropped by a verbatim override.
+  if (opts.accountLinking !== false) {
+    const trustedProviders = new Set<string>([
+      ...(opts.accountLinking?.trustedProviders ?? []),
+      ...(opts.google ? ["google"] : []),
+    ])
+    if (trustedProviders.size > 0) {
       config.account = {
         ...(config.account ?? {}),
         accountLinking: {
           enabled: true,
-          trustedProviders:
-            opts.accountLinking?.trustedProviders ?? ["google"],
-        },
-      }
-    }
-
-    if (opts.google.allowlist) {
-      const googleAllowlist = opts.google.allowlist
-      config.databaseHooks = {
-        ...(config.databaseHooks ?? {}),
-        user: {
-          ...(config.databaseHooks?.user ?? {}),
-          create: {
-            ...(config.databaseHooks?.user?.create ?? {}),
-            before: async (user) => {
-              const ok = await googleAllowlist({
-                email: user.email,
-                emailVerified: (user as { emailVerified?: boolean }).emailVerified ?? false,
-              })
-              if (!ok) {
-                throw new Error(
-                  "[@naeemba/next-starter] Sign-up rejected by google.allowlist."
-                )
-              }
-            },
-          },
+          trustedProviders: [...trustedProviders],
         },
       }
     }
@@ -159,10 +168,13 @@ export function createAuth(opts: CreateAuthOptions = {}): Auth {
 
   if (opts.passkey) {
     const url = new URL(env.BETTER_AUTH_URL)
+    // url.origin strips path + trailing slash; @simplewebauthn/server does a
+    // strict equality check against the browser-sent RFC 6454 origin, which
+    // also has no path or trailing slash.
     const plugin = passkeyPlugin({
       rpName: opts.passkey.rpName ?? url.hostname,
       rpID: opts.passkey.rpID ?? url.hostname,
-      origin: opts.passkey.origin ?? env.BETTER_AUTH_URL,
+      origin: opts.passkey.origin ?? url.origin,
     })
     config.plugins = [...(config.plugins ?? []), plugin as unknown as NonNullable<BetterAuthOptions["plugins"]>[number]]
   }

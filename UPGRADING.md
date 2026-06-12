@@ -13,6 +13,25 @@
 - `passkey` table added to `@naeemba/next-starter/schema` (always exported, unused if you don't opt in).
 - **Database driver switched from `pg` (node-postgres) to `postgres` (postgres.js by Porsager.)** The `Db` inferred type now wraps a postgres-js client. The connection string format is unchanged. If you pass your own `db?:` via `createAuth({ db })`, it must now be a `drizzle-orm/postgres-js` instance, not `drizzle-orm/node-postgres`. The `pg` dependency has been removed.
 
+### postgres.js pooler caveat
+
+postgres.js defaults to `prepare: true` (prepared-statement mode), which **breaks pgBouncer transaction-pool mode** — the default for the Supabase pooler (port 6543) and the standard Neon pooler URL. Symptom: `prepared statement "..." does not exist` on the second request after a connection rotation.
+
+`createDb` exposes pool options for this case:
+
+```ts
+import { createDb } from "@naeemba/next-starter/db"
+const db = createDb(process.env.DATABASE_URL!, {
+  prepare: false,   // <-- for Supabase/Neon transaction-pool URLs
+  max: 10,
+  idleTimeout: 20,  // seconds; postgres.js's own default is no timeout
+})
+
+export const auth = createAuth({ db })
+```
+
+If you use the session pooler (Supabase port 5432) or a direct connection, keep the defaults.
+
 ### Migration steps — only if you enable passkey
 
 1. Re-run drizzle-kit to add the `passkey` table:

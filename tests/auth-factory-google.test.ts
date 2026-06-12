@@ -20,7 +20,15 @@ afterEach(() => {
 
 type AuthOpts = {
   socialProviders?: {
-    google?: { clientId?: string; clientSecret?: string; scopes?: string[] }
+    google?: {
+      clientId?: string
+      clientSecret?: string
+      scopes?: string[]
+      mapProfileToUser?: (profile: {
+        email: string
+        email_verified: boolean
+      }) => Promise<Record<string, unknown>> | Record<string, unknown>
+    }
   }
   account?: { accountLinking?: { enabled?: boolean; trustedProviders?: string[] } }
   databaseHooks?: {
@@ -92,7 +100,16 @@ describe("createAuth({ google })", () => {
     expect(opts(auth).account?.accountLinking).toBeUndefined()
   })
 
-  it("respects a custom trustedProviders list", () => {
+  it("respects a custom trustedProviders list (with google auto-merged)", () => {
+    const auth = createAuth({
+      db: {} as never,
+      google: { clientId: "x", clientSecret: "y" },
+      accountLinking: { trustedProviders: ["github"] },
+    })
+    expect(opts(auth).account?.accountLinking?.trustedProviders).toEqual(["github", "google"])
+  })
+
+  it("preserves the order when google is already in trustedProviders", () => {
     const auth = createAuth({
       db: {} as never,
       google: { clientId: "x", clientSecret: "y" },
@@ -101,7 +118,16 @@ describe("createAuth({ google })", () => {
     expect(opts(auth).account?.accountLinking?.trustedProviders).toEqual(["google", "github"])
   })
 
-  it("wires google.allowlist as a databaseHooks.user.create.before hook", async () => {
+  it("wires accountLinking even when google is omitted (for later provider additions)", () => {
+    const auth = createAuth({
+      db: {} as never,
+      accountLinking: { trustedProviders: ["github"] },
+    })
+    expect(opts(auth).account?.accountLinking?.enabled).toBe(true)
+    expect(opts(auth).account?.accountLinking?.trustedProviders).toEqual(["github"])
+  })
+
+  it("wires google.allowlist as socialProviders.google.mapProfileToUser", async () => {
     const seen: Array<{ email: string; emailVerified: boolean }> = []
     const auth = createAuth({
       db: {} as never,
@@ -114,14 +140,28 @@ describe("createAuth({ google })", () => {
         },
       },
     })
-    const hook = opts(auth).databaseHooks?.user?.create?.before
-    expect(hook).toBeDefined()
+    const map = opts(auth).socialProviders?.google?.mapProfileToUser
+    expect(map).toBeDefined()
 
-    await hook!({ email: "alice@acme.com", emailVerified: true })
+    await map!({ email: "alice@acme.com", email_verified: true })
     expect(seen[0]).toEqual({ email: "alice@acme.com", emailVerified: true })
 
     await expect(
-      hook!({ email: "bob@other.com", emailVerified: true })
-    ).rejects.toThrow()
+      map!({ email: "bob@other.com", email_verified: true })
+    ).rejects.toThrow(/google\.allowlist/)
+  })
+
+  it("does NOT wire a global databaseHooks.user.create.before hook for google.allowlist", () => {
+    const auth = createAuth({
+      db: {} as never,
+      google: {
+        clientId: "x",
+        clientSecret: "y",
+        allowlist: () => true,
+      },
+    })
+    // Magic-link signups, account-create flows from other providers, and any
+    // direct user.create call must NOT be gated by google.allowlist.
+    expect(opts(auth).databaseHooks?.user?.create?.before).toBeUndefined()
   })
 })
