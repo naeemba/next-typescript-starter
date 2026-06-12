@@ -1,16 +1,16 @@
-import { drizzle } from "drizzle-orm/node-postgres"
-import { Pool } from "pg"
+import { drizzle } from "drizzle-orm/postgres-js"
+import postgres from "postgres"
 import * as schema from "../schema/index.js"
 
 type Db = ReturnType<typeof drizzle<typeof schema>>
 
 export function createDb(databaseUrl: string): Db {
-  if (!databaseUrl) {
+  if (!databaseUrl?.trim()) {
     throw new Error(
       "[@naeemba/next-starter] createDb requires a non-empty DATABASE_URL connection string."
     )
   }
-  return drizzle(new Pool({ connectionString: databaseUrl }), { schema })
+  return drizzle(postgres(databaseUrl), { schema })
 }
 
 let _db: Db | null = null

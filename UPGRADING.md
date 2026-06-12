@@ -11,6 +11,7 @@
 - `<SignInForm/>` gains `google`, `passkey`, `magicLink` (toggle), `dividerLabel`, and `onSignedIn` props.
 - New `@naeemba/next-starter/pages/passkey-manager` entry exporting `<PasskeyManager/>` for settings pages.
 - `passkey` table added to `@naeemba/next-starter/schema` (always exported, unused if you don't opt in).
+- **Database driver switched from `pg` (node-postgres) to `postgres` (postgres.js by Porsager.)** The `Db` inferred type now wraps a postgres-js client. The connection string format is unchanged. If you pass your own `db?:` via `createAuth({ db })`, it must now be a `drizzle-orm/postgres-js` instance, not `drizzle-orm/node-postgres`. The `pg` dependency has been removed.
 
 ### Migration steps — only if you enable passkey
 

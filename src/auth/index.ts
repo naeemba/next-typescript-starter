@@ -40,7 +40,7 @@ export interface CreateAuthOptions {
   /**
    * Pre-built Drizzle client. If provided, DATABASE_URL is not required.
    * The package always uses better-auth's "pg" provider, so this must be
-   * a node-postgres or postgres-js compatible drizzle client.
+   * a postgres-js compatible drizzle client (`drizzle-orm/postgres-js`).
    */
   db?: DrizzleAdapterDb
   session?: {
