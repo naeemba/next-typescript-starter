@@ -2,7 +2,17 @@
 
 Opinionated Next.js + Drizzle + Better Auth starter, shipped as a **versioned npm package** instead of a clone-and-fork template. Add it as a dependency, set env vars, create a few shim files, and you have working magic-link email sign-in. Bump the package version to pull in fixes.
 
-If you're upgrading from 0.1.x, see [UPGRADING.md](./UPGRADING.md) for the migration steps.
+If you're upgrading, see [UPGRADING.md](./UPGRADING.md).
+
+## Sign-in methods
+
+| Method     | Enable via                                          | Required env                                |
+| ---------- | --------------------------------------------------- | ------------------------------------------- |
+| Magic link | Default (or `createAuth({ magicLink: {...} })`)     | `RESEND_API_KEY` in production              |
+| Google     | `createAuth({ google: {} })`                        | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`  |
+| Passkey    | `createAuth({ passkey: { rpName: 'Your App' } })`   | none (uses `BETTER_AUTH_URL`)               |
+
+Each method is opt-in. Enabling one does not require the others.
 
 ## Install
 
@@ -95,7 +105,59 @@ npx drizzle-kit generate
 npx drizzle-kit migrate
 ```
 
-That creates the `user`, `session`, `account`, and `verification` tables. Re-run after a package update that changes the schema (release notes will say so).
+That creates the `user`, `session`, `account`, `verification`, and `passkey` tables. Re-run after a package update that changes the schema (release notes will say so).
+
+## Enabling Google sign-in
+
+```ts
+// lib/auth.ts
+export const auth = createAuth({
+  google: {
+    // clientId / clientSecret default to env GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET
+    allowlist: (profile) => profile.email.endsWith("@acme.com"), // optional
+  },
+})
+```
+
+`createAuth({ google })` auto-enables account linking with Google as a trusted provider (verified-email gated). Opt out with `accountLinking: false`.
+
+Render the button:
+
+```tsx
+<SignInForm authClient={authClient} google />
+```
+
+## Enabling passkeys
+
+```ts
+// lib/auth.ts
+export const auth = createAuth({
+  passkey: { rpName: "Your App" },  // rpID and origin default from BETTER_AUTH_URL
+})
+```
+
+Run a migration so the `passkey` table exists (covered by the `npx drizzle-kit generate && migrate` above).
+
+Render the sign-in button:
+
+```tsx
+<SignInForm authClient={authClient} passkey />
+```
+
+The button is hidden silently in browsers without WebAuthn support.
+
+Add a registration page (any signed-in user can call it):
+
+```tsx
+// app/settings/passkeys/page.tsx
+"use client"
+import { PasskeyManager } from "@naeemba/next-starter/pages/passkey-manager"
+import { authClient } from "../../../lib/auth-client"
+
+export default function Page() {
+  return <PasskeyManager authClient={authClient} />
+}
+```
 
 ## Reading the session in a Server Component
 
@@ -136,7 +198,8 @@ This package is ESM-only with subpath `exports`. Your consumer `tsconfig.json` *
 | `@naeemba/next-starter/schema` | Drizzle table definitions |
 | `@naeemba/next-starter/db` | Lazy Drizzle client |
 | `@naeemba/next-starter/email` | `sendMagicLink({ to, url })` |
-| `@naeemba/next-starter/pages/sign-in` | Named-exported `SignInPage` component |
+| `@naeemba/next-starter/pages/sign-in` | `SignInForm` (headless) + `SignInPage` (with chrome) — supports `google`, `passkey`, `magicLink` props |
+| `@naeemba/next-starter/pages/passkey-manager` | `PasskeyManager` — "Add a passkey" button for settings pages |
 | `@naeemba/next-starter/server` | `createServer(auth)` — returns `getSession`, `requireSession` |
 
 ## Design and rationale

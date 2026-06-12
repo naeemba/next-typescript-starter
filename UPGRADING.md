@@ -1,5 +1,81 @@
 # Upgrading
 
+## 0.2.x → 0.3.0
+
+0.3.0 is additive. Existing 0.2.x consumers need no code changes unless they opt in to one of the new methods.
+
+### What's new
+
+- `createAuth({ google: {...} })` — Google OAuth via better-auth `socialProviders`. Auto-enables account linking with Google as a trusted provider (verified-email gated).
+- `createAuth({ passkey: {...} })` — WebAuthn passkey sign-in via `@better-auth/passkey`.
+- `<SignInForm/>` gains `google`, `passkey`, `magicLink` (toggle), `dividerLabel`, and `onSignedIn` props.
+- New `@naeemba/next-starter/pages/passkey-manager` entry exporting `<PasskeyManager/>` for settings pages.
+- `passkey` table added to `@naeemba/next-starter/schema` (always exported, unused if you don't opt in).
+
+### Migration steps — only if you enable passkey
+
+1. Re-run drizzle-kit to add the `passkey` table:
+
+   ```bash
+   DATABASE_URL=... npx drizzle-kit generate
+   DATABASE_URL=... npx drizzle-kit migrate
+   ```
+
+2. Opt in:
+
+   ```ts
+   // lib/auth.ts
+   export const auth = createAuth({
+     passkey: { rpName: "Your App" },
+   })
+   ```
+
+3. Render the sign-in button:
+
+   ```tsx
+   <SignInForm authClient={authClient} passkey />
+   ```
+
+4. Add a registration page (optional but recommended — passkey sign-in requires a registered credential):
+
+   ```tsx
+   // app/settings/passkeys/page.tsx
+   "use client"
+   import { PasskeyManager } from "@naeemba/next-starter/pages/passkey-manager"
+   import { authClient } from "../../../lib/auth-client"
+
+   export default function Page() {
+     return <PasskeyManager authClient={authClient} />
+   }
+   ```
+
+If you don't enable passkey, you can skip the migration; the empty table costs nothing.
+
+### Migration steps — only if you enable Google
+
+1. Add `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` to your environment.
+2. Opt in:
+
+   ```ts
+   export const auth = createAuth({ google: {} })
+   ```
+
+3. Render the button:
+
+   ```tsx
+   <SignInForm authClient={authClient} google />
+   ```
+
+### Defaults to know
+
+- When `google` is set and `accountLinking` is not explicitly disabled, the factory wires `accountLinking: { enabled: true, trustedProviders: ["google"] }`. Sign-ins with a verified Google email matching an existing user's email link to the same user. Opt out with `accountLinking: false`.
+- When `passkey` is enabled but `window.PublicKeyCredential` is undefined (older browsers), the passkey button is hidden silently.
+
+### Notes
+
+- `passkey.allowlist` is intentionally NOT supported. `@better-auth/passkey` does not expose a `beforeRegistration` hook, and passkey registration requires an active session, so the magic-link / Google allowlists already gate who can register a passkey.
+- `<PasskeyManager/>` for 0.3.0 only supports "add" — listing and removing passkeys via the React client is deferred until `@better-auth/passkey` exposes direct list/delete methods (it currently exposes them as nanostore atoms and fetch endpoints).
+
 ## 0.1.x → 0.2.0
 
 0.2.0 replaces the frozen `auth` singleton with a `createAuth({...})` factory and introduces a new `/client` export. Migration requires three file edits in your consumer app.
