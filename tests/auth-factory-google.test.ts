@@ -149,4 +149,17 @@ describe("createAuth({ google })", () => {
     // direct user.create call must NOT be gated by google.allowlist.
     expect(opts(auth).databaseHooks?.user?.create?.before).toBeUndefined()
   })
+
+  // Regression: a stale/malformed DATABASE_URL in env must not break the
+  // opts.db path. parseEnv rejects non-postgres URLs, so without the placeholder
+  // override `createAuth({ db, google: {...} })` would fail for a consumer
+  // using a different driver but who still has DATABASE_URL set.
+  it("ignores a non-postgres process.env.DATABASE_URL when opts.db is provided", () => {
+    process.env.DATABASE_URL = "mysql://x:y@localhost/z"
+    process.env.GOOGLE_CLIENT_ID = "id"
+    process.env.GOOGLE_CLIENT_SECRET = "secret"
+    expect(() =>
+      createAuth({ db: {} as never, google: {} }),
+    ).not.toThrow()
+  })
 })
