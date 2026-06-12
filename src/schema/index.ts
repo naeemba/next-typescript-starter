@@ -50,6 +50,10 @@ export const verification = pgTable("verification", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 })
 
+// Column names mirror @better-auth/passkey's plugin schema (publicKey,
+// credentialID, etc.). The drizzle adapter looks up by JS property name,
+// so renaming credentialID → credentialId would break the integration even
+// though the underlying DB column ("credential_id") stays the same.
 export const passkey = pgTable("passkey", {
   id: text("id").primaryKey(),
   userId: text("user_id")
@@ -62,6 +66,7 @@ export const passkey = pgTable("passkey", {
   deviceType: text("device_type"),
   backedUp: boolean("backed_up").notNull().default(false),
   transports: text("transports"),
+  aaguid: text("aaguid"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 })
 

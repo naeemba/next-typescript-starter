@@ -8,6 +8,7 @@ CREATE TABLE "passkey" (
 	"device_type" text,
 	"backed_up" boolean DEFAULT false NOT NULL,
 	"transports" text,
+	"aaguid" text,
 	"created_at" timestamp DEFAULT now() NOT NULL,
 	CONSTRAINT "passkey_credential_id_unique" UNIQUE("credential_id")
 );
