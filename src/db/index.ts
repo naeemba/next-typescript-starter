@@ -43,20 +43,42 @@ export function createDb(databaseUrl: string, opts: CreateDbOptions = {}): Db {
  * `import { db }` proxy and `createAuth({})` honour `DATABASE_PREPARE`,
  * `DATABASE_POOL_MAX`, `DATABASE_IDLE_TIMEOUT` without making consumers
  * thread an opts object through every entry point.
+ *
+ * Throws on malformed values (`DATABASE_PREPARE=fals`, `DATABASE_POOL_MAX=abc`,
+ * `DATABASE_POOL_MAX=-1`, etc). The `import { db }` proxy is the only
+ * validator for these vars — silently falling back to defaults would
+ * re-enable prepared statements against a transaction-pool pgBouncer in
+ * prod with no boot-time signal. Fail loud instead.
  */
 export function createDbOptionsFromEnv(
   source: Record<string, string | undefined> = process.env
 ): CreateDbOptions {
   const opts: CreateDbOptions = {}
-  if (source.DATABASE_PREPARE === "false") opts.prepare = false
-  if (source.DATABASE_PREPARE === "true") opts.prepare = true
-  if (source.DATABASE_POOL_MAX) {
-    const n = Number(source.DATABASE_POOL_MAX)
-    if (Number.isFinite(n) && n > 0) opts.max = n
+  if (source.DATABASE_PREPARE !== undefined) {
+    if (source.DATABASE_PREPARE !== "true" && source.DATABASE_PREPARE !== "false") {
+      throw new Error(
+        `[@naeemba/next-starter] DATABASE_PREPARE must be 'true' or 'false', got: ${JSON.stringify(source.DATABASE_PREPARE)}`,
+      )
+    }
+    opts.prepare = source.DATABASE_PREPARE === "true"
   }
-  if (source.DATABASE_IDLE_TIMEOUT) {
+  if (source.DATABASE_POOL_MAX !== undefined) {
+    const n = Number(source.DATABASE_POOL_MAX)
+    if (!Number.isFinite(n) || n <= 0 || !Number.isInteger(n)) {
+      throw new Error(
+        `[@naeemba/next-starter] DATABASE_POOL_MAX must be a positive integer, got: ${JSON.stringify(source.DATABASE_POOL_MAX)}`,
+      )
+    }
+    opts.max = n
+  }
+  if (source.DATABASE_IDLE_TIMEOUT !== undefined) {
     const n = Number(source.DATABASE_IDLE_TIMEOUT)
-    if (Number.isFinite(n) && n >= 0) opts.idleTimeout = n
+    if (!Number.isFinite(n) || n < 0 || !Number.isInteger(n)) {
+      throw new Error(
+        `[@naeemba/next-starter] DATABASE_IDLE_TIMEOUT must be a non-negative integer, got: ${JSON.stringify(source.DATABASE_IDLE_TIMEOUT)}`,
+      )
+    }
+    opts.idleTimeout = n
   }
   return opts
 }
