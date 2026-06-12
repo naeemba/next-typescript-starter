@@ -51,7 +51,7 @@ import { createAuth } from "@naeemba/next-starter/auth"
 export const auth = createAuth()
 ```
 
-`createAuth` accepts options for `allowlist` (restrict sign-in to specific email addresses or domains), `session` (override session cookie / expiry settings), and a custom `sendMagicLinkEmail` function if you want to control the email template or provider.
+`createAuth` accepts options for `magicLink` (custom expiry, `allowlist`, custom `email` template), `session` (override session cookie / expiry settings), `google`, `passkey`, `singleAdmin` (lock sign-in to one or more emails), and `accountLinking`.
 
 ### lib/auth-client.ts
 

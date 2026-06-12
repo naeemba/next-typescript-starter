@@ -45,10 +45,10 @@ export default defineConfig({
 })
 `
 
-export const authRoute = `import { toNextJsHandler } from "@naeemba/next-starter/auth-route"
+export const authRoute = `import { createAuthRoute } from "@naeemba/next-starter/auth-route"
 import { auth } from "@/lib/auth"
 
-export const { GET, POST } = toNextJsHandler(auth)
+export const { GET, POST } = createAuthRoute(auth)
 `
 
 export const signInPage = `import { SignInPage } from "@naeemba/next-starter/pages/sign-in"

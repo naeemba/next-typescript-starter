@@ -31,6 +31,27 @@ describe("next-starter init", () => {
     expect(existsSync(join(dir, "app/api/auth/[...all]/route.ts"))).toBe(true)
     expect(existsSync(join(dir, "app/sign-in/page.tsx"))).toBe(true)
     expect(existsSync(join(dir, ".env.example"))).toBe(true)
+
+    // Generated content must reference the actual exported names, not
+    // hallucinated ones. A bare existsSync/regex pair would let typos
+    // through (e.g. the toNextJsHandler vs createAuthRoute bug fixed
+    // in this release).
+    const route = readFileSync(join(dir, "app/api/auth/[...all]/route.ts"), "utf8")
+    expect(route).toMatch(/createAuthRoute/)
+    expect(route).not.toMatch(/toNextJsHandler/)
+
+    const authFile = readFileSync(join(dir, "lib/auth.ts"), "utf8")
+    expect(authFile).toMatch(/from "@naeemba\/next-starter\/auth"/)
+    expect(authFile).toMatch(/createAuth\(/)
+
+    const authClient = readFileSync(join(dir, "lib/auth-client.ts"), "utf8")
+    expect(authClient).toMatch(/from "@naeemba\/next-starter\/client"/)
+    expect(authClient).toMatch(/createAuthClient/)
+
+    const authServer = readFileSync(join(dir, "lib/auth-server.ts"), "utf8")
+    expect(authServer).toMatch(/from "@naeemba\/next-starter\/server"/)
+    expect(authServer).toMatch(/createServer\(auth\)/)
+
     expect(stdout).toMatch(/Next steps:/)
   })
 

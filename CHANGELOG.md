@@ -14,6 +14,7 @@ All notable changes to `@naeemba/next-starter`. Migration steps live in [UPGRADI
 
 - `postgres`, `@react-email/components`, `@react-email/render`, and `resend` are now **optional peer dependencies** instead of hard dependencies. Existing consumers' lockfiles are unaffected; fresh installs surface a peer warning if the relevant package is omitted. Consumers who supply their own db client / email template / Resend alternative can skip the install cost. See UPGRADING.md for details.
 - `package.json` now declares a `bin` mapping for the `next-starter` CLI; the published tarball includes `bin/`.
+- Internal: split the default magic-link template into its own entry (`dist/email/templates/magic-link-lazy.js`) so loading `email/index.js` no longer eagerly pulls `@react-email/components`. Not part of the public `exports` map.
 
 ## 0.3.0
 
