@@ -83,6 +83,10 @@ export function createMiddleware(opts: CreateMiddlewareOptions) {
 
   return function middleware(req: NextRequest): NextResponse {
     const pathname = req.nextUrl.pathname
+    // Short-circuit signInPath: if a `protect` pattern matches it (e.g.
+    // `/**`), redirecting unauthenticated traffic to signInPath would match
+    // again and trigger an infinite client redirect loop.
+    if (pathname === signInPath) return NextResponse.next()
     const isProtected = compiled.some((re) => re.test(pathname))
     if (!isProtected) return NextResponse.next()
 

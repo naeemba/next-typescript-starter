@@ -158,4 +158,20 @@ describe("createMiddleware", () => {
     const { createMiddleware } = await import("../src/middleware/index.js")
     expect(() => createMiddleware({ protect: [] })).toThrow(/'protect' must be a non-empty array/)
   })
+
+  // Without the short-circuit, `protect: ['/**']` matches `/sign-in` and the
+  // unauthenticated redirect loops forever (ERR_TOO_MANY_REDIRECTS in browser).
+  it("does NOT redirect when the request is already at signInPath, even if protect matches it", async () => {
+    const { createMiddleware } = await import("../src/middleware/index.js")
+    const mw = createMiddleware({ protect: ["/**"] })
+    expect(mw(makeReq({ pathname: "/sign-in" }) as unknown as Parameters<typeof mw>[0])).toEqual({ type: "next" })
+    expect(mw(makeReq({ pathname: "/sign-in", search: "?callbackUrl=/admin" }) as unknown as Parameters<typeof mw>[0])).toEqual({ type: "next" })
+  })
+
+  it("does NOT redirect when a custom signInPath is matched by protect", async () => {
+    const { createMiddleware } = await import("../src/middleware/index.js")
+    const mw = createMiddleware({ protect: ["/login", "/admin/**"], signInPath: "/login" })
+    expect(mw(makeReq({ pathname: "/login" }) as unknown as Parameters<typeof mw>[0])).toEqual({ type: "next" })
+    expect(mw(makeReq({ pathname: "/admin/x" }) as unknown as Parameters<typeof mw>[0])).toMatchObject({ type: "redirect" })
+  })
 })
