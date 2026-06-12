@@ -1,28 +1,23 @@
 "use client"
 
-import { useEffect, useState, type ReactNode, type FormEvent } from "react"
+import { useState, type ReactNode, type FormEvent } from "react"
+import {
+  useWebAuthnSupported,
+  type MagicLinkAuthClient as MagicLinkClientShape,
+  type SocialAuthClient,
+  type PasskeyAuthClient,
+} from "../../client/index.js"
 
 /**
- * Minimal structural type covering the better-auth client methods SignInForm uses.
- * Compatible with the AuthClient type exported from `/client`.
+ * Structural type for the better-auth client methods SignInForm uses.
+ * Compatible with the AuthClient returned by `createAuthClient()`.
  *
- * `social` and `passkey` are optional so 0.2.x consumers who only use magic-link
- * can keep their existing narrower client type. When `google` or `passkey` props
- * are set, the corresponding method MUST be present on the client.
+ * `social` and `passkey` are surfaced as Partial<…> so 0.2.x magic-link-only
+ * consumers don't need them on their client type. When `google` or `passkey`
+ * props are set, the corresponding method MUST be present at runtime.
  */
-export interface SignInAuthClient {
-  signIn: {
-    magicLink: (opts: { email: string; callbackURL: string }) =>
-      Promise<{ error: { message?: string | null } | null | undefined }>
-    social?: (opts: { provider: string; callbackURL: string }) =>
-      Promise<{ error: { message?: string | null } | null | undefined }>
-    passkey?: (opts?: { autoFill?: boolean }) =>
-      Promise<{ error: { message?: string | null } | null | undefined }>
-  }
-}
-
-/** @deprecated Use SignInAuthClient. Kept as a backwards-compatible alias. */
-export type MagicLinkAuthClient = SignInAuthClient
+export type SignInAuthClient =
+  MagicLinkClientShape & Partial<SocialAuthClient> & Partial<PasskeyAuthClient>
 
 export interface SignInFormProps {
   authClient: SignInAuthClient
@@ -83,75 +78,53 @@ export function SignInForm(props: SignInFormProps) {
     google: "",
     passkey: "",
   })
-  const [isPasskeySupported, setIsPasskeySupported] = useState(false)
-
-  useEffect(() => {
-    setIsPasskeySupported(
-      typeof window !== "undefined" && typeof window.PublicKeyCredential !== "undefined"
-    )
-  }, [])
+  const isPasskeySupported = useWebAuthnSupported()
 
   function setMethod(method: keyof MethodStatus, s: Status, errorMessage = "") {
     setStatusMap((prev) => ({ ...prev, [method]: s }))
     setErrors((prev) => ({ ...prev, [method]: errorMessage }))
   }
 
+  async function runAttempt(
+    method: keyof MethodStatus,
+    call: () => Promise<{ error: { message?: string | null } | null | undefined }>,
+    onSuccess?: () => void,
+  ) {
+    setMethod(method, "sending")
+    try {
+      const { error } = await call()
+      if (error) {
+        setMethod(method, "error", error.message ?? "Unknown error")
+        return
+      }
+      setMethod(method, "sent")
+      onSuccess?.()
+    } catch (err) {
+      setMethod(method, "error", err instanceof Error ? err.message : "Network error")
+    }
+  }
+
   async function onMagicLinkSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
-    setMethod("magicLink", "sending")
-    try {
-      const { error } = await authClient.signIn.magicLink({ email, callbackURL: callbackUrl })
-      if (error) {
-        setMethod("magicLink", "error", error.message ?? "Unknown error")
-        return
-      }
-      setMethod("magicLink", "sent")
-      onSent?.(email)
-    } catch (err) {
-      setMethod("magicLink", "error", err instanceof Error ? err.message : "Network error")
-    }
+    await runAttempt(
+      "magicLink",
+      () => authClient.signIn.magicLink({ email, callbackURL: callbackUrl }),
+      () => onSent?.(email),
+    )
   }
-
-  async function onGoogleClick() {
-    setMethod("google", "sending")
-    try {
-      const { error } = await authClient.signIn.social!({
-        provider: "google",
-        callbackURL: callbackUrl,
-      })
-      if (error) {
-        setMethod("google", "error", error.message ?? "Unknown error")
-        return
-      }
-      setMethod("google", "sent")
-      onSignedIn?.()
-    } catch (err) {
-      setMethod("google", "error", err instanceof Error ? err.message : "Network error")
-    }
-  }
-
-  async function onPasskeyClick() {
-    setMethod("passkey", "sending")
-    try {
-      const { error } = await authClient.signIn.passkey!()
-      if (error) {
-        setMethod("passkey", "error", error.message ?? "Unknown error")
-        return
-      }
-      setMethod("passkey", "sent")
-      onSignedIn?.()
-    } catch (err) {
-      setMethod("passkey", "error", err instanceof Error ? err.message : "Network error")
-    }
-  }
-
-  if (status.magicLink === "sent") {
-    return <p className={className}>{sentCopy(email)}</p>
-  }
+  const onGoogleClick = () =>
+    runAttempt(
+      "google",
+      () => authClient.signIn.social!({ provider: "google", callbackURL: callbackUrl }),
+      () => onSignedIn?.(),
+    )
+  const onPasskeyClick = () =>
+    runAttempt("passkey", () => authClient.signIn.passkey!(), () => onSignedIn?.())
 
   const showGoogle = !!google
   const showPasskey = !!passkey && isPasskeySupported
   const showDivider = magicLink && (showGoogle || showPasskey)
+  const isMagicLinkSent = status.magicLink === "sent"
   const googleLabel =
     typeof google === "object" && google.label ? google.label : "Continue with Google"
   const passkeyLabel =
@@ -204,28 +177,36 @@ export function SignInForm(props: SignInFormProps) {
       )}
 
       {magicLink && (
-        <form onSubmit={onMagicLinkSubmit}>
-          <label htmlFor="email" style={{ display: "block", fontSize: 13, marginBottom: 6 }}>
-            {emailLabel}
-          </label>
-          <input
-            id="email"
-            type="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            disabled={status.magicLink === "sending"}
-            style={{ width: "100%", padding: 8, marginBottom: 8 }}
-          />
-          <button type="submit" disabled={status.magicLink === "sending"} style={{ padding: "8px 12px" }}>
-            {status.magicLink === "sending" ? "Sending…" : submitLabel}
-          </button>
-          {status.magicLink === "error" && (
-            <p style={{ color: "#b00", marginTop: 8, fontSize: 13 }}>
-              {errorCopy(errors.magicLink)}
-            </p>
-          )}
-        </form>
+        isMagicLinkSent ? (
+          // Render the "sent" state inline rather than early-returning the
+          // whole component. Early-returning unmounts the Google/passkey
+          // buttons and drops any in-flight status updates from those
+          // methods — defeating the per-method MethodStatus isolation.
+          <p>{sentCopy(email)}</p>
+        ) : (
+          <form onSubmit={onMagicLinkSubmit}>
+            <label htmlFor="email" style={{ display: "block", fontSize: 13, marginBottom: 6 }}>
+              {emailLabel}
+            </label>
+            <input
+              id="email"
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              disabled={status.magicLink === "sending"}
+              style={{ width: "100%", padding: 8, marginBottom: 8 }}
+            />
+            <button type="submit" disabled={status.magicLink === "sending"} style={{ padding: "8px 12px" }}>
+              {status.magicLink === "sending" ? "Sending…" : submitLabel}
+            </button>
+            {status.magicLink === "error" && (
+              <p style={{ color: "#b00", marginTop: 8, fontSize: 13 }}>
+                {errorCopy(errors.magicLink)}
+              </p>
+            )}
+          </form>
+        )
       )}
     </div>
   )

@@ -20,16 +20,21 @@ type DrizzleForeignKey = {
   onDelete?: string
 }
 
-function cols() {
-  return (
-    (passkey as unknown as Record<symbol, Record<string, DrizzleColumn>>)[DrizzleColumns] ??
-    {}
+function col(name: string): DrizzleColumn {
+  const all = (passkey as unknown as Record<symbol, Record<string, DrizzleColumn>>)[DrizzleColumns] ?? {}
+  const c = all[name]
+  if (!c) throw new Error(`passkey schema is missing column "${name}"`)
+  return c
+}
+function colNames(): string[] {
+  return Object.keys(
+    (passkey as unknown as Record<symbol, Record<string, DrizzleColumn>>)[DrizzleColumns] ?? {},
   )
 }
-function fks() {
-  return (
-    (passkey as unknown as Record<symbol, DrizzleForeignKey[]>)[DrizzleForeignKeys] ?? []
-  )
+function fk(): DrizzleForeignKey {
+  const all = (passkey as unknown as Record<symbol, DrizzleForeignKey[]>)[DrizzleForeignKeys] ?? []
+  if (!all[0]) throw new Error("passkey schema is missing its FK to user.id")
+  return all[0]
 }
 
 describe("passkey schema", () => {
@@ -39,7 +44,7 @@ describe("passkey schema", () => {
   // missing-column INSERTs at runtime.
   // Keep in sync with @better-auth/passkey ^1.6.x.
   it("declares every column the @better-auth/passkey adapter expects", () => {
-    expect(Object.keys(cols()).sort()).toEqual(
+    expect(colNames().sort()).toEqual(
       [
         "id",
         "userId",
@@ -57,36 +62,32 @@ describe("passkey schema", () => {
   })
 
   it("pins notNull on every plugin-required field", () => {
-    const c = cols()
-    expect(c.id.notNull).toBe(true)
-    expect(c.userId.notNull).toBe(true)
-    expect(c.publicKey.notNull).toBe(true)
-    expect(c.credentialID.notNull).toBe(true)
-    expect(c.counter.notNull).toBe(true)
-    expect(c.backedUp.notNull).toBe(true)
-    expect(c.createdAt.notNull).toBe(true)
+    expect(col("id").notNull).toBe(true)
+    expect(col("userId").notNull).toBe(true)
+    expect(col("publicKey").notNull).toBe(true)
+    expect(col("credentialID").notNull).toBe(true)
+    expect(col("counter").notNull).toBe(true)
+    expect(col("backedUp").notNull).toBe(true)
+    expect(col("createdAt").notNull).toBe(true)
   })
 
   it("leaves the plugin-optional fields nullable", () => {
-    const c = cols()
-    expect(c.name.notNull).toBe(false)
-    expect(c.deviceType.notNull).toBe(false)
-    expect(c.transports.notNull).toBe(false)
-    expect(c.aaguid.notNull).toBe(false)
+    expect(col("name").notNull).toBe(false)
+    expect(col("deviceType").notNull).toBe(false)
+    expect(col("transports").notNull).toBe(false)
+    expect(col("aaguid").notNull).toBe(false)
   })
 
   it("declares credential_id as unique (one credential → one row)", () => {
-    expect(cols().credentialID.isUnique).toBe(true)
+    expect(col("credentialID").isUnique).toBe(true)
   })
 
   it("declares user_id as a cascade FK to user.id (ON DELETE cascade)", () => {
-    const fk = fks()[0]
-    expect(fk).toBeDefined()
-    const ref = fk.reference()
+    const ref = fk().reference()
     expect(ref.foreignTable[DrizzleTableName]).toBe("user")
     expect(ref.foreignColumns.map((c) => c.name)).toEqual(["id"])
     expect(ref.columns.map((c) => c.name)).toEqual(["user_id"])
-    expect(fk.onDelete).toBe("cascade")
+    expect(fk().onDelete).toBe("cascade")
   })
 
   it("widens PasskeyRow to the right notNull-aware types", () => {

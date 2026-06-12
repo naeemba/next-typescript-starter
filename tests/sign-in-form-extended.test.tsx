@@ -49,6 +49,22 @@ describe("<SignInForm/> google prop", () => {
     )
   })
 
+  it("fires onSignedIn on a successful Google sign-in", async () => {
+    const onSignedIn = vi.fn()
+    render(<SignInForm authClient={makeClient()} google onSignedIn={onSignedIn} />)
+    fireEvent.click(screen.getByRole("button", { name: /continue with google/i }))
+    await waitFor(() => expect(onSignedIn).toHaveBeenCalledTimes(1))
+  })
+
+  it("does NOT fire onSignedIn when Google sign-in returns an error", async () => {
+    const onSignedIn = vi.fn()
+    const social = vi.fn(async () => ({ error: { message: "google denied" } }))
+    render(<SignInForm authClient={makeClient({ social })} google onSignedIn={onSignedIn} />)
+    fireEvent.click(screen.getByRole("button", { name: /continue with google/i }))
+    await waitFor(() => expect(screen.queryByText(/google denied/i)).not.toBeNull())
+    expect(onSignedIn).not.toHaveBeenCalled()
+  })
+
   it("displays an inline error if google sign-in fails", async () => {
     const social = vi.fn(async () => ({ error: { message: "google denied" } }))
     render(<SignInForm authClient={makeClient({ social })} google />)
@@ -82,6 +98,22 @@ describe("<SignInForm/> passkey prop", () => {
     render(<SignInForm authClient={makeClient({ passkey })} passkey />)
     fireEvent.click(await screen.findByRole("button", { name: /sign in with passkey/i }))
     await waitFor(() => expect(passkey).toHaveBeenCalled())
+  })
+
+  it("fires onSignedIn on a successful passkey sign-in", async () => {
+    const onSignedIn = vi.fn()
+    render(<SignInForm authClient={makeClient()} passkey onSignedIn={onSignedIn} />)
+    fireEvent.click(await screen.findByRole("button", { name: /sign in with passkey/i }))
+    await waitFor(() => expect(onSignedIn).toHaveBeenCalledTimes(1))
+  })
+
+  it("does NOT fire onSignedIn when passkey sign-in returns an error", async () => {
+    const onSignedIn = vi.fn()
+    const passkey = vi.fn(async () => ({ error: { message: "no creds" } }))
+    render(<SignInForm authClient={makeClient({ passkey })} passkey onSignedIn={onSignedIn} />)
+    fireEvent.click(await screen.findByRole("button", { name: /sign in with passkey/i }))
+    await waitFor(() => expect(screen.queryByText(/no creds/i)).not.toBeNull())
+    expect(onSignedIn).not.toHaveBeenCalled()
   })
 
   it("displays an inline error if passkey sign-in fails", async () => {
@@ -131,13 +163,30 @@ describe("<SignInForm/> per-method status isolation", () => {
   beforeEach(() => { enablePasskey() })
   afterEach(() => { disablePasskey() })
 
-  it("a pending google attempt does not disable the magic-link email input", async () => {
+  it("a pending google attempt does not disable the email input, magic-link submit, or passkey button", async () => {
     let resolveSocial: (v: { error: null }) => void = () => {}
     const social = vi.fn(() => new Promise<{ error: null }>((r) => { resolveSocial = r }))
-    render(<SignInForm authClient={makeClient({ social })} google />)
+    render(<SignInForm authClient={makeClient({ social })} google passkey />)
     fireEvent.click(screen.getByRole("button", { name: /continue with google/i }))
+
     const emailInput = screen.getByLabelText(/email/i) as HTMLInputElement
+    const magicLinkSubmit = screen.getByRole("button", { name: /send magic link/i }) as HTMLButtonElement
+    const passkeyButton = (await screen.findByRole("button", { name: /sign in with passkey/i })) as HTMLButtonElement
+
     expect(emailInput.disabled).toBe(false)
+    expect(magicLinkSubmit.disabled).toBe(false)
+    expect(passkeyButton.disabled).toBe(false)
     resolveSocial({ error: null })
+  })
+
+  it("keeps the google + passkey buttons mounted after the magic link is sent (no early-return)", async () => {
+    render(<SignInForm authClient={makeClient()} google passkey />)
+    const emailInput = screen.getByLabelText(/email/i) as HTMLInputElement
+    fireEvent.change(emailInput, { target: { value: "alice@example.com" } })
+    fireEvent.click(screen.getByRole("button", { name: /send magic link/i }))
+    // Sent state is rendered inline; the social/passkey buttons stay mounted.
+    await waitFor(() => expect(screen.queryByText(/check your inbox/i)).not.toBeNull())
+    expect(screen.queryByRole("button", { name: /continue with google/i })).not.toBeNull()
+    expect(screen.queryByRole("button", { name: /sign in with passkey/i })).not.toBeNull()
   })
 })
