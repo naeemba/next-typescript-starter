@@ -104,6 +104,60 @@ export function createAuth(opts: CreateAuthOptions = {}): Auth {
     ],
   }
 
+  if (opts.google) {
+    const clientId = opts.google.clientId ?? env.GOOGLE_CLIENT_ID
+    const clientSecret = opts.google.clientSecret ?? env.GOOGLE_CLIENT_SECRET
+    if (!clientId || !clientSecret) {
+      throw new Error(
+        "[@naeemba/next-starter] createAuth({ google }) requires GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET " +
+          "(either as opts.google.clientId/clientSecret or in process.env)."
+      )
+    }
+    config.socialProviders = {
+      ...(config.socialProviders ?? {}),
+      google: {
+        clientId,
+        clientSecret,
+        ...(opts.google.scopes ? { scopes: opts.google.scopes } : {}),
+      },
+    }
+
+    if (opts.accountLinking !== false) {
+      config.account = {
+        ...(config.account ?? {}),
+        accountLinking: {
+          enabled: true,
+          trustedProviders:
+            opts.accountLinking?.trustedProviders ?? ["google"],
+        },
+      }
+    }
+
+    if (opts.google.allowlist) {
+      const googleAllowlist = opts.google.allowlist
+      config.databaseHooks = {
+        ...(config.databaseHooks ?? {}),
+        user: {
+          ...(config.databaseHooks?.user ?? {}),
+          create: {
+            ...(config.databaseHooks?.user?.create ?? {}),
+            before: async (user) => {
+              const ok = await googleAllowlist({
+                email: user.email,
+                emailVerified: (user as { emailVerified?: boolean }).emailVerified ?? false,
+              })
+              if (!ok) {
+                throw new Error(
+                  "[@naeemba/next-starter] Sign-up rejected by google.allowlist."
+                )
+              }
+            },
+          },
+        },
+      }
+    }
+  }
+
   if (opts.session) {
     config.session = {
       ...(opts.session.expiresIn !== undefined && { expiresIn: opts.session.expiresIn }),
