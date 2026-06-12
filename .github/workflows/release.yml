@@ -79,14 +79,22 @@ jobs:
         run: npm --workspace examples/basic run test:e2e
 
       - name: Generate CHANGELOG entry for this version (if missing)
+        env:
+          # Boundary class excludes `-`, `+`, `.`, digits, letters so `0.4.0`
+          # never matches `0.4.0-beta.1`, `0.4.0+build.7`, or `0.40`. Same
+          # pattern lives in the release-notes step below — keep them in lockstep.
+          # Anchors both heading shapes: `## 0.4.0` (hand-written) and
+          # `## [0.4.0](url) (date)` (conventional-changelog).
+          # `[[]?` (not `(\[)?`) so `awk -v re=...` doesn't strip the backslash and
+          # collapse the optional group into a `[` class-open. Boundary class
+          # `[^0-9.A-Za-z+-]` keeps `0.4.0` from matching `0.4.0-beta.1`,
+          # `0.4.0+build.7`, or `0.40`. The literal `.` in the version is left
+          # unescaped — close enough for semver inputs from a `v*.*.*` tag.
+          VERSION_HEADING_RE: '^## [[]?VERSION_PLACEHOLDER([^0-9.A-Za-z+-]|$)'
         run: |
           VERSION="${GITHUB_REF#refs/tags/v}"
-          # Skip if the maintainer already hand-wrote an entry for this version.
-          # Matches both `## 0.4.0` and `## [0.4.0](url) (date)` shapes.
-          if awk -v v="$VERSION" '
-              $0 ~ ("^## (\\[)?" v "([^0-9.]|$)") { found=1; exit }
-              END { exit !found }
-            ' CHANGELOG.md; then
+          RE="${VERSION_HEADING_RE/VERSION_PLACEHOLDER/$VERSION}"
+          if awk -v re="$RE" '$0 ~ re { found=1; exit } END { exit !found }' CHANGELOG.md; then
             echo "CHANGELOG already has section for v$VERSION; skipping auto-generation."
           else
             echo "No CHANGELOG entry for v$VERSION — auto-generating from conventional commits."
@@ -103,20 +111,25 @@ jobs:
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Must stay in lockstep with the regex in the generate step above.
+          # `[[]?` (not `(\[)?`) so `awk -v re=...` doesn't strip the backslash and
+          # collapse the optional group into a `[` class-open. Boundary class
+          # `[^0-9.A-Za-z+-]` keeps `0.4.0` from matching `0.4.0-beta.1`,
+          # `0.4.0+build.7`, or `0.40`. The literal `.` in the version is left
+          # unescaped — close enough for semver inputs from a `v*.*.*` tag.
+          VERSION_HEADING_RE: '^## [[]?VERSION_PLACEHOLDER([^0-9.A-Za-z+-]|$)'
         run: |
           VERSION="${GITHUB_REF#refs/tags/v}"
           if gh release view "v$VERSION" >/dev/null 2>&1; then
             echo "Release v$VERSION already exists — skipping."
             exit 0
           fi
-          # Extract this version's section from CHANGELOG.md. Matches both
-          # hand-written (`## 0.4.0`) and conventional-changelog (`## [0.4.0](url) (date)`)
-          # heading shapes. Falls back to GitHub-generated notes if no section is found.
+          RE="${VERSION_HEADING_RE/VERSION_PLACEHOLDER/$VERSION}"
           NOTES_FILE=$(mktemp)
-          awk -v v="$VERSION" '
-            $0 ~ ("^## (\\[)?" v "([^0-9.]|$)") { p=1; next }
-            p && /^## /                          { exit }
-            p                                    { print }
+          awk -v re="$RE" '
+            $0 ~ re      { p=1; next }
+            p && /^## / { exit }
+            p           { print }
           ' CHANGELOG.md > "$NOTES_FILE"
           if [ ! -s "$NOTES_FILE" ]; then
             echo "No CHANGELOG entry for $VERSION — using auto-generated notes." >&2
