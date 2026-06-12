@@ -76,30 +76,54 @@ function parseJsonc(raw) {
   return JSON.parse(stripped)
 }
 
-async function readTsconfig(target) {
+async function readTsconfigAt(path) {
   try {
-    return parseJsonc(await readFile(join(target, "tsconfig.json"), "utf8"))
+    return parseJsonc(await readFile(path, "utf8"))
   } catch {
     return undefined
   }
 }
 
+// Walks a `tsconfig.json` chain via `extends` (relative paths only; bare
+// specifiers like `@tsconfig/strictest` are skipped because resolving npm
+// packages would need a full node module resolver and most monorepos use
+// relative paths anyway). Cap at 5 levels to short-circuit accidental cycles.
+async function readTsconfigChain(target) {
+  const chain = []
+  let path = join(target, "tsconfig.json")
+  for (let i = 0; i < 5; i++) {
+    const cfg = await readTsconfigAt(path)
+    if (!cfg) break
+    chain.push(cfg)
+    const ext = cfg.extends
+    if (typeof ext !== "string" || !ext.startsWith(".")) break
+    path = resolve(dirname(path), ext.endsWith(".json") ? ext : `${ext}.json`)
+  }
+  return chain
+}
+
 async function detectSrcLayout(target) {
   if (await exists(join(target, "src", "app"))) return true
   if (await exists(join(target, "app"))) return false
-  const tsconfig = await readTsconfig(target)
-  if (tsconfig) {
-    const baseUrl = tsconfig?.compilerOptions?.baseUrl
-    const paths = tsconfig?.compilerOptions?.paths ?? {}
-    const atPath = paths["@/*"]?.[0] ?? ""
-    if (atPath.startsWith("./src/") || (baseUrl === "./" && atPath.startsWith("src/"))) return true
+  for (const cfg of await readTsconfigChain(target)) {
+    const baseUrl = cfg?.compilerOptions?.baseUrl
+    const atPath = cfg?.compilerOptions?.paths?.["@/*"]?.[0]
+    if (typeof atPath !== "string") continue
+    // Three shapes accepted: `./src/*` (create-next-app), `src/*` with
+    // any `baseUrl` in {".", "./", undefined} (turborepo/nx), and anything
+    // resolving under `<baseUrl>/src/*` for bases like `./packages/web`.
+    if (atPath.startsWith("./src/")) return true
+    const baseAllowsBareSrc = baseUrl === undefined || baseUrl === "." || baseUrl === "./"
+    if (baseAllowsBareSrc && atPath.startsWith("src/")) return true
   }
   return false
 }
 
 async function hasAtAlias(target) {
-  const tsconfig = await readTsconfig(target)
-  return Boolean(tsconfig?.compilerOptions?.paths?.["@/*"])
+  for (const cfg of await readTsconfigChain(target)) {
+    if (cfg?.compilerOptions?.paths?.["@/*"]) return true
+  }
+  return false
 }
 
 async function writeFileSafe(path, content, force, status) {

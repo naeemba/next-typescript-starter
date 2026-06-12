@@ -138,6 +138,38 @@ describe("next-starter init", () => {
     expect(existsSync(join(dir, "lib/auth.ts"))).toBe(false)
   })
 
+  // Turborepo / Nx / create-turbo emit `"paths": { "@/*": ["src/*"] }` with
+  // no leading `./`. The bare-segment branch in detectSrcLayout has to accept
+  // that shape or the CLI writes lib/auth.ts at the project root in a real
+  // src/-layout monorepo.
+  it("detects src/ layout when @/* uses bare `src/*` with baseUrl '.'", () => {
+    writeFileSync(
+      join(dir, "tsconfig.json"),
+      `{ "compilerOptions": { "baseUrl": ".", "paths": { "@/*": ["src/*"] } } }\n`,
+    )
+    runCli(["init", dir])
+    expect(existsSync(join(dir, "src/lib/auth.ts"))).toBe(true)
+    expect(existsSync(join(dir, "lib/auth.ts"))).toBe(false)
+  })
+
+  // Monorepos commonly put the alias in `tsconfig.base.json` and have the
+  // package-level `tsconfig.json` only carry `"extends"`. A false-negative
+  // warning here pushes consumers to duplicate the alias and break their
+  // monorepo conventions.
+  it("does NOT warn about @/* when the alias lives in an extended base config", () => {
+    writeFileSync(
+      join(dir, "tsconfig.base.json"),
+      `{ "compilerOptions": { "paths": { "@/*": ["./src/*"] } } }\n`,
+    )
+    writeFileSync(
+      join(dir, "tsconfig.json"),
+      `{ "extends": "./tsconfig.base.json" }\n`,
+    )
+    const { code, stdout } = runCli(["init", dir])
+    expect(code).toBe(0)
+    expect(stdout).not.toMatch(/paths.*"@\/\*"/)
+  })
+
   it("warns when tsconfig.json is missing the @/* path alias", () => {
     writeFileSync(
       join(dir, "tsconfig.json"),
