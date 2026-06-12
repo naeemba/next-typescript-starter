@@ -65,20 +65,41 @@ async function exists(path) {
   }
 }
 
+// create-next-app writes tsconfig.json with line comments (// ...) and
+// occasionally trailing commas — valid JSONC, not strict JSON. Strip
+// both before JSON.parse so detection doesn't silently fall through.
+function parseJsonc(raw) {
+  const stripped = raw
+    .replace(/\/\*[\s\S]*?\*\//g, "")     // block comments
+    .replace(/(^|[^:])\/\/.*$/gm, "$1")   // line comments (avoid URLs in strings)
+    .replace(/,(\s*[}\]])/g, "$1")        // trailing commas
+  return JSON.parse(stripped)
+}
+
+async function readTsconfig(target) {
+  try {
+    return parseJsonc(await readFile(join(target, "tsconfig.json"), "utf8"))
+  } catch {
+    return undefined
+  }
+}
+
 async function detectSrcLayout(target) {
   if (await exists(join(target, "src", "app"))) return true
   if (await exists(join(target, "app"))) return false
-  // Inspect tsconfig.json paths if present.
-  try {
-    const tsconfig = JSON.parse(await readFile(join(target, "tsconfig.json"), "utf8"))
+  const tsconfig = await readTsconfig(target)
+  if (tsconfig) {
     const baseUrl = tsconfig?.compilerOptions?.baseUrl
     const paths = tsconfig?.compilerOptions?.paths ?? {}
     const atPath = paths["@/*"]?.[0] ?? ""
     if (atPath.startsWith("./src/") || (baseUrl === "./" && atPath.startsWith("src/"))) return true
-  } catch {
-    // tsconfig missing or unparseable — fall through.
   }
   return false
+}
+
+async function hasAtAlias(target) {
+  const tsconfig = await readTsconfig(target)
+  return Boolean(tsconfig?.compilerOptions?.paths?.["@/*"])
 }
 
 async function writeFileSafe(path, content, force, status) {
@@ -134,9 +155,24 @@ async function run() {
   for (const p of status.overwritten) stdout.write(`  ! ${rel(p)}  (overwritten)\n`)
   for (const p of status.skipped)     stdout.write(`  = ${rel(p)}  (exists, use --force to overwrite)\n`)
 
+  // Warn if the generated `@/lib/...` imports won't resolve. We don't patch
+  // tsconfig.json automatically — that's the consumer's surface — but a
+  // silent failure at first `tsc` / `next dev` is a worse DX than a hint here.
+  if (!(await hasAtAlias(target))) {
+    stdout.write(
+      `\n  ! tsconfig.json has no \`paths: { "@/*": [...] }\` entry. The generated\n` +
+        `    route.ts and page.tsx use \`@/lib/...\` imports — add the alias to\n` +
+        `    compilerOptions.paths to make them resolve.\n`,
+    )
+  }
+
   stdout.write(`
 Next steps:
-  1. npm install @naeemba/next-starter@latest postgres @react-email/components @react-email/render resend
+  1. Install only the peers you actually use:
+       npm install @naeemba/next-starter@latest postgres            # Drizzle/Postgres
+       npm install @react-email/components @react-email/render      # default magic-link template
+       npm install resend                                           # production email transport
+     (All four are optional — install just what your config touches.)
   2. Fill in .env.example -> .env (DATABASE_URL, BETTER_AUTH_SECRET, BETTER_AUTH_URL)
   3. Run your drizzle migrations against the better-auth schema
   4. npm run dev — visit /sign-in

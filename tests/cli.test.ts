@@ -116,4 +116,52 @@ describe("next-starter init", () => {
     expect(code).toBe(0)
     expect(stdout).toMatch(/next-starter init/)
   })
+
+  // create-next-app writes tsconfig.json with line comments + trailing commas.
+  // Strict JSON.parse would fall through and src/ layout would mis-detect.
+  it("detects src/ layout from a JSONC tsconfig with comments and trailing commas", () => {
+    writeFileSync(
+      join(dir, "tsconfig.json"),
+      `{
+  // Set by create-next-app
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./src/*"], // <- src layout
+    },
+  },
+}
+`,
+    )
+    runCli(["init", dir])
+    expect(existsSync(join(dir, "src/lib/auth.ts"))).toBe(true)
+    expect(existsSync(join(dir, "lib/auth.ts"))).toBe(false)
+  })
+
+  it("warns when tsconfig.json is missing the @/* path alias", () => {
+    writeFileSync(
+      join(dir, "tsconfig.json"),
+      `{ "compilerOptions": { "baseUrl": "." } }\n`,
+    )
+    const { code, stdout } = runCli(["init", dir])
+    expect(code).toBe(0)
+    expect(stdout).toMatch(/paths.*"@\/\*"/)
+  })
+
+  it("does NOT warn about @/* when the alias is configured", () => {
+    writeFileSync(
+      join(dir,  "tsconfig.json"),
+      `{ "compilerOptions": { "baseUrl": ".", "paths": { "@/*": ["./*"] } } }\n`,
+    )
+    const { code, stdout } = runCli(["init", dir])
+    expect(code).toBe(0)
+    expect(stdout).not.toMatch(/paths.*"@\/\*"/)
+  })
+
+  it("install hint frames peers as optional, not required", () => {
+    const { stdout } = runCli(["init", dir])
+    expect(stdout).toMatch(/Install only the peers you actually use/)
+    // The old all-in-one line that contradicted optional-peers should be gone.
+    expect(stdout).not.toMatch(/npm install @naeemba\/next-starter@latest postgres @react-email/)
+  })
 })
