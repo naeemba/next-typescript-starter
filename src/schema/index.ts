@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, boolean } from "drizzle-orm/pg-core"
+import { pgTable, text, timestamp, boolean, integer } from "drizzle-orm/pg-core"
 
 export const user = pgTable("user", {
   id: text("id").primaryKey(),
@@ -50,6 +50,27 @@ export const verification = pgTable("verification", {
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 })
 
+// Column names mirror @better-auth/passkey's plugin schema (publicKey,
+// credentialID, etc.). The drizzle adapter looks up by JS property name,
+// so renaming credentialID → credentialId would break the integration even
+// though the underlying DB column ("credential_id") stays the same.
+export const passkey = pgTable("passkey", {
+  id: text("id").primaryKey(),
+  userId: text("user_id")
+    .notNull()
+    .references(() => user.id, { onDelete: "cascade" }),
+  name: text("name"),
+  publicKey: text("public_key").notNull(),
+  credentialID: text("credential_id").notNull().unique(),
+  counter: integer("counter").notNull(),
+  deviceType: text("device_type"),
+  backedUp: boolean("backed_up").notNull().default(false),
+  transports: text("transports"),
+  aaguid: text("aaguid"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+})
+
 export type User = typeof user.$inferSelect
 export type Account = typeof account.$inferSelect
 export type Verification = typeof verification.$inferSelect
+export type PasskeyRow = typeof passkey.$inferSelect

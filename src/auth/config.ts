@@ -16,6 +16,36 @@ const EnvSchema = z.object({
     .url("BETTER_AUTH_URL must be a valid URL (e.g. https://app.example.com)"),
   EMAIL_FROM: z.string().email().optional(),
   RESEND_API_KEY: z.string().optional(),
+  GOOGLE_CLIENT_ID: z.string().optional(),
+  GOOGLE_CLIENT_SECRET: z.string().optional(),
+  /**
+   * `false` disables postgres.js prepared statements. Set to "false" when
+   * DATABASE_URL points at a transaction-pool pgBouncer (Supabase pooler
+   * port 6543, Neon pooler URL) — prepared statements don't survive
+   * connection rotation in that mode.
+   */
+  DATABASE_PREPARE: z
+    .enum(["true", "false"])
+    .optional()
+    .transform((v) => (v === undefined ? undefined : v === "true")),
+  /** Max pool size. Defaults to 10. */
+  DATABASE_POOL_MAX: z
+    .string()
+    .optional()
+    .transform((v) => (v === undefined ? undefined : Number(v)))
+    .refine(
+      (v) => v === undefined || (Number.isFinite(v) && v > 0),
+      "DATABASE_POOL_MAX must be a positive integer"
+    ),
+  /** Seconds an idle connection stays open before being closed. Defaults to 20. */
+  DATABASE_IDLE_TIMEOUT: z
+    .string()
+    .optional()
+    .transform((v) => (v === undefined ? undefined : Number(v)))
+    .refine(
+      (v) => v === undefined || (Number.isFinite(v) && v >= 0),
+      "DATABASE_IDLE_TIMEOUT must be a non-negative integer"
+    ),
 })
 
 export type Env = z.infer<typeof EnvSchema>

@@ -1,7 +1,8 @@
 import { betterAuth, type Auth, type BetterAuthOptions } from "better-auth"
 import { magicLink } from "better-auth/plugins"
+import { passkey as passkeyPlugin } from "@better-auth/passkey"
 import { drizzleAdapter } from "better-auth/adapters/drizzle"
-import { createDb } from "../db/index.js"
+import { createDb, createDbOptionsFromEnv } from "../db/index.js"
 import * as schema from "../schema/index.js"
 import { sendMagicLink, type MagicLinkEmailFields } from "../email/index.js"
 import { parseEnv } from "./config.js"
@@ -39,7 +40,7 @@ export interface CreateAuthOptions {
   /**
    * Pre-built Drizzle client. If provided, DATABASE_URL is not required.
    * The package always uses better-auth's "pg" provider, so this must be
-   * a node-postgres or postgres-js compatible drizzle client.
+   * a postgres-js compatible drizzle client (`drizzle-orm/postgres-js`).
    */
   db?: DrizzleAdapterDb
   session?: {
@@ -52,6 +53,19 @@ export interface CreateAuthOptions {
     email?: (args: { to: string; url: string; expiresIn: number }) =>
       Promise<MagicLinkEmailFields> | MagicLinkEmailFields
   }
+  google?: {
+    clientId?: string
+    clientSecret?: string
+    scopes?: string[]
+    allowlist?: (profile: { email: string; emailVerified: boolean }) =>
+      boolean | Promise<boolean>
+  }
+  passkey?: {
+    rpName?: string
+    rpID?: string
+    origin?: string
+  }
+  accountLinking?: false | { trustedProviders: string[] }
 }
 
 export function createAuth(opts: CreateAuthOptions = {}): Auth {
@@ -68,7 +82,7 @@ export function createAuth(opts: CreateAuthOptions = {}): Auth {
   }
 
   const env = parseEnv(process.env, overrides)
-  const db = opts.db ?? createDb(env.DATABASE_URL)
+  const db = opts.db ?? createDb(env.DATABASE_URL, createDbOptionsFromEnv(process.env))
   const magicLinkExpiresIn = opts.magicLink?.expiresIn ?? 600
   const allowlist = opts.magicLink?.allowlist
   const customTemplate = opts.magicLink?.email
@@ -87,6 +101,89 @@ export function createAuth(opts: CreateAuthOptions = {}): Auth {
         }),
       }),
     ],
+  }
+
+  if (opts.google) {
+    const clientId = opts.google.clientId ?? env.GOOGLE_CLIENT_ID
+    const clientSecret = opts.google.clientSecret ?? env.GOOGLE_CLIENT_SECRET
+    if (!clientId || !clientSecret) {
+      throw new Error(
+        "[@naeemba/next-starter] createAuth({ google }) requires GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET " +
+          "(either as opts.google.clientId/clientSecret or in process.env)."
+      )
+    }
+    type GoogleConfig = NonNullable<NonNullable<BetterAuthOptions["socialProviders"]>["google"]>
+    // `satisfies` (not `as`) so an upstream rename of `mapProfileToUser` /
+    // `scopes` etc. surfaces as a compile error on the next better-auth
+    // bump instead of silently no-opping at runtime.
+    const baseGoogle = {
+      clientId,
+      clientSecret,
+      ...(opts.google.scopes ? { scopes: opts.google.scopes } : {}),
+    } satisfies GoogleConfig
+    const googleConfig = opts.google.allowlist
+      ? ({
+          ...baseGoogle,
+          // Gate inside the Google getUserInfo path so the check fires for
+          // both first-time signup AND account linking (linkAccount never
+          // reaches the global user.create.before hook), and does NOT fire
+          // for magic-link signups.
+          mapProfileToUser: async (profile: { email: string; email_verified: boolean }) => {
+            const ok = await opts.google!.allowlist!({
+              email: profile.email,
+              emailVerified: profile.email_verified,
+            })
+            if (!ok) {
+              throw new Error(
+                "[@naeemba/next-starter] Sign-in rejected by google.allowlist."
+              )
+            }
+            return {}
+          },
+        } satisfies GoogleConfig)
+      : baseGoogle
+    config.socialProviders = {
+      ...(config.socialProviders ?? {}),
+      google: googleConfig,
+    }
+  }
+
+  // accountLinking is independent of opts.google: a consumer may set it to
+  // pre-configure trustedProviders for a provider they'll add later. When
+  // google is enabled, it's auto-added to the trusted set rather than
+  // silently dropped by a verbatim override.
+  //
+  // Note: this stays as `!== false` rather than the `?? true` form used in
+  // createDb / createAuthClient because `accountLinking`'s type is a
+  // discriminated union (`false | { trustedProviders } | undefined`), and
+  // `!== false` is the form that lets TS narrow the union inside the block.
+  if (opts.accountLinking !== false) {
+    const trustedProviders = new Set<string>([
+      ...(opts.accountLinking?.trustedProviders ?? []),
+      ...(opts.google ? ["google"] : []),
+    ])
+    if (trustedProviders.size > 0) {
+      config.account = {
+        ...(config.account ?? {}),
+        accountLinking: {
+          enabled: true,
+          trustedProviders: [...trustedProviders],
+        },
+      }
+    }
+  }
+
+  if (opts.passkey) {
+    const url = new URL(env.BETTER_AUTH_URL)
+    // url.origin strips path + trailing slash; @simplewebauthn/server does a
+    // strict equality check against the browser-sent RFC 6454 origin, which
+    // also has no path or trailing slash.
+    const plugin = passkeyPlugin({
+      rpName: opts.passkey.rpName ?? url.hostname,
+      rpID: opts.passkey.rpID ?? url.hostname,
+      origin: opts.passkey.origin ?? url.origin,
+    })
+    config.plugins = [...(config.plugins ?? []), plugin as unknown as NonNullable<BetterAuthOptions["plugins"]>[number]]
   }
 
   if (opts.session) {

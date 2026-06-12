@@ -2,7 +2,17 @@
 
 Opinionated Next.js + Drizzle + Better Auth starter, shipped as a **versioned npm package** instead of a clone-and-fork template. Add it as a dependency, set env vars, create a few shim files, and you have working magic-link email sign-in. Bump the package version to pull in fixes.
 
-If you're upgrading from 0.1.x, see [UPGRADING.md](./UPGRADING.md) for the migration steps.
+If you're upgrading, see [UPGRADING.md](./UPGRADING.md).
+
+## Sign-in methods
+
+| Method     | Enable via                                          | Required env                                |
+| ---------- | --------------------------------------------------- | ------------------------------------------- |
+| Magic link | Default (or `createAuth({ magicLink: {...} })`)     | `RESEND_API_KEY` in production              |
+| Google     | `createAuth({ google: {} })`                        | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`  |
+| Passkey    | `createAuth({ passkey: { rpName: 'Your App' } })`   | none (uses `BETTER_AUTH_URL`)               |
+
+Each method is opt-in. Enabling one does not require the others.
 
 ## Install
 
@@ -10,7 +20,7 @@ If you're upgrading from 0.1.x, see [UPGRADING.md](./UPGRADING.md) for the migra
 npm install @naeemba/next-starter
 ```
 
-Peer dependencies: `next >= 14`, `react >= 18`, `react-dom >= 18`.
+Peer dependencies: `next >= 16`, `react >= 19`, `react-dom >= 19`. Node `>= 20`.
 
 ## Env vars
 
@@ -95,7 +105,59 @@ npx drizzle-kit generate
 npx drizzle-kit migrate
 ```
 
-That creates the `user`, `session`, `account`, and `verification` tables. Re-run after a package update that changes the schema (release notes will say so).
+That creates the `user`, `session`, `account`, `verification`, and `passkey` tables. Re-run after a package update that changes the schema (release notes will say so).
+
+## Enabling Google sign-in
+
+```ts
+// lib/auth.ts
+export const auth = createAuth({
+  google: {
+    // clientId / clientSecret default to env GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET
+    allowlist: (profile) => profile.email.endsWith("@acme.com"), // optional
+  },
+})
+```
+
+`createAuth({ google })` auto-enables account linking with Google as a trusted provider (verified-email gated). Opt out with `accountLinking: false`.
+
+Render the button:
+
+```tsx
+<SignInForm authClient={authClient} google />
+```
+
+## Enabling passkeys
+
+```ts
+// lib/auth.ts
+export const auth = createAuth({
+  passkey: { rpName: "Your App" },  // rpID and origin default from BETTER_AUTH_URL
+})
+```
+
+Run a migration so the `passkey` table exists (covered by the `npx drizzle-kit generate && migrate` above).
+
+Render the sign-in button:
+
+```tsx
+<SignInForm authClient={authClient} passkey />
+```
+
+The button is hidden silently in browsers without WebAuthn support.
+
+Add a registration page (any signed-in user can call it):
+
+```tsx
+// app/settings/passkeys/page.tsx
+"use client"
+import { PasskeyManager } from "@naeemba/next-starter/pages/passkey-manager"
+import { authClient } from "../../../lib/auth-client"
+
+export default function Page() {
+  return <PasskeyManager authClient={authClient} />
+}
+```
 
 ## Reading the session in a Server Component
 
@@ -136,13 +198,20 @@ This package is ESM-only with subpath `exports`. Your consumer `tsconfig.json` *
 | `@naeemba/next-starter/schema` | Drizzle table definitions |
 | `@naeemba/next-starter/db` | Lazy Drizzle client |
 | `@naeemba/next-starter/email` | `sendMagicLink({ to, url })` |
-| `@naeemba/next-starter/pages/sign-in` | Named-exported `SignInPage` component |
+| `@naeemba/next-starter/pages/sign-in` | `SignInForm` (headless) + `SignInPage` (with chrome) — supports `google`, `passkey`, `magicLink` props |
+| `@naeemba/next-starter/pages/passkey-manager` | `PasskeyManager` — "Add a passkey" button for settings pages |
 | `@naeemba/next-starter/server` | `createServer(auth)` — returns `getSession`, `requireSession` |
 
 ## Design and rationale
 
-See `docs/superpowers/specs/` and `docs/superpowers/plans/` in the repo for the full v0.1 foundation design and implementation plan — why a package and not a template, the re-export shim pattern, what's deferred to future versions, and the step-by-step build process.
+This is a **versioned npm package**, not a clone-and-fork template. Consumers depend on it like any other package, set env vars, and create a handful of re-export shim files (`lib/auth.ts`, `lib/auth-client.ts`, etc.) that import from the package's subpath exports. Fixes flow through a `^` bump, not a manual diff against your fork.
+
+The re-export shim pattern is deliberate: it keeps the package's surface minimal (no client/server entry confusion at the Next.js level) while letting consumers customize per-app concerns (`createAuth({ google, passkey, magicLink: { allowlist } })`) in code they own.
+
+## Styling
+
+`<SignInForm/>`, `<SignInPage/>`, and `<PasskeyManager/>` ship with **minimal inline styles** (plain HTML attributes) — no CSS file, no Tailwind classes, no styled-components dependency. Every component accepts a `className` prop you can target with your own CSS / Tailwind layer. The inline styles are intended as a sensible default while bootstrapping; production apps should override them.
 
 ## License
 
-MIT
+MIT — see [LICENSE](./LICENSE).
