@@ -54,21 +54,36 @@ export interface SocialAuthClient {
 export interface CreateAuthClientOptions {
   baseURL?: string
   /**
-   * Load the @better-auth/passkey client plugin. Defaults to `true` so the
-   * returned client structurally satisfies `PasskeyAuthClient`. Set to `false`
-   * when your server-side `createAuth` does NOT enable `passkey` — otherwise
-   * a `<SignInForm passkey />` wired against `AuthClient`'s types compiles
-   * cleanly but resolves to a 404 at runtime.
+   * Load the @better-auth/passkey client plugin. Defaults to `true`.
+   *
+   * When `false`, the returned client's TYPE drops `PasskeyAuthClient` too
+   * (via the function overload below) — so a consumer who calls
+   * `createAuthClient({ passkey: false })` cannot accidentally reach for
+   * `client.passkey.addPasskey` and hit a runtime `TypeError`.
    */
   passkey?: boolean
 }
 
+/** AuthClient when the passkey plugin is loaded (the default). */
 export type AuthClient =
   ReturnType<typeof betterAuthCreateClient>
   & MagicLinkAuthClient
   & PasskeyAuthClient
   & SocialAuthClient
 
+/** AuthClient when `createAuthClient({ passkey: false })` was used. */
+export type AuthClientWithoutPasskey =
+  ReturnType<typeof betterAuthCreateClient>
+  & MagicLinkAuthClient
+  & SocialAuthClient
+
+// Overloads: the literal `{ passkey: false }` narrows away `PasskeyAuthClient`.
+// Anything else (including `passkey: true` and the default) returns the full
+// AuthClient. The order matters — the most-specific signature must come first.
+export function createAuthClient(
+  opts: CreateAuthClientOptions & { passkey: false }
+): AuthClientWithoutPasskey
+export function createAuthClient(opts?: CreateAuthClientOptions): AuthClient
 export function createAuthClient(opts: CreateAuthClientOptions = {}): AuthClient {
   const baseURL =
     opts.baseURL ??
@@ -76,6 +91,6 @@ export function createAuthClient(opts: CreateAuthClientOptions = {}): AuthClient
   const plugins: Array<ReturnType<typeof magicLinkClient> | ReturnType<typeof passkeyClient>> = [
     magicLinkClient(),
   ]
-  if (opts.passkey !== false) plugins.push(passkeyClient())
+  if (opts.passkey ?? true) plugins.push(passkeyClient())
   return betterAuthCreateClient({ baseURL, plugins }) as AuthClient
 }

@@ -44,14 +44,26 @@ export function PasskeyManager(props: PasskeyManagerProps) {
   const [status, setStatus] = useState<Status>("idle")
   const [error, setError] = useState("")
   const isSupported = useWebAuthnSupported()
-  // Guard against setting state on an unmounted instance — a user who clicks
-  // Add and then navigates away mid-ceremony would otherwise fire
-  // onAdded?.() (which often calls router.push / parent setState) on a
-  // different route.
+  // The setup body MUST run on every mount — under React StrictMode (Next.js
+  // dev default) effects are double-invoked as setup → cleanup → setup, so
+  // an empty setup leaves `mounted.current = false` after the first cleanup.
   const mounted = useRef(true)
-  useEffect(() => () => {
-    mounted.current = false
+  useEffect(() => {
+    mounted.current = true
+    return () => { mounted.current = false }
   }, [])
+
+  // Auto-revert to `idle` after a short success window so the user can
+  // register a second key (laptop → phone → yubikey on a settings page).
+  // The `disabled` guard during "added" prevents the double-click race;
+  // this restores the multi-key flow once the race window has passed.
+  useEffect(() => {
+    if (status !== "added") return
+    const t = setTimeout(() => {
+      if (mounted.current) setStatus("idle")
+    }, 1500)
+    return () => clearTimeout(t)
+  }, [status])
 
   async function onAdd() {
     setStatus("adding")
@@ -77,9 +89,6 @@ export function PasskeyManager(props: PasskeyManagerProps) {
     return <div className={className}>{unsupportedCopy}</div>
   }
 
-  // Disable the button while adding AND after success — without this, a
-  // double-click during the brief "added" state begins a second registration
-  // ceremony while the success copy is still showing.
   const disabled = status === "adding" || status === "added"
 
   return (

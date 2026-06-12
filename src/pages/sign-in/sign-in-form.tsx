@@ -12,12 +12,19 @@ import {
  * Structural type for the better-auth client methods SignInForm uses.
  * Compatible with the AuthClient returned by `createAuthClient()`.
  *
- * `social` and `passkey` are surfaced as Partial<…> so 0.2.x magic-link-only
- * consumers don't need them on their client type. When `google` or `passkey`
- * props are set, the corresponding method MUST be present at runtime.
+ * `social` and `passkey` are declared optional at the *inner* level — that
+ * way a magic-link-only `MagicLinkAuthClient` from /client is assignable
+ * here without widening. `Partial<SocialAuthClient>` would only weaken the
+ * top-level `signIn` key (collapses to required when intersected) and
+ * leave `social` required underneath.
  */
-export type SignInAuthClient =
-  MagicLinkClientShape & Partial<SocialAuthClient> & Partial<PasskeyAuthClient>
+export interface SignInAuthClient {
+  signIn: {
+    magicLink: MagicLinkClientShape["signIn"]["magicLink"]
+    social?: SocialAuthClient["signIn"]["social"]
+    passkey?: PasskeyAuthClient["signIn"]["passkey"]
+  }
+}
 
 export interface SignInFormProps {
   authClient: SignInAuthClient
@@ -112,14 +119,26 @@ export function SignInForm(props: SignInFormProps) {
       () => onSent?.(email),
     )
   }
-  const onGoogleClick = () =>
-    runAttempt(
+  const onGoogleClick = () => {
+    const social = authClient.signIn.social
+    if (!social) {
+      setMethod("google", "error", "Google sign-in is not configured on this client.")
+      return
+    }
+    return runAttempt(
       "google",
-      () => authClient.signIn.social!({ provider: "google", callbackURL: callbackUrl }),
+      () => social({ provider: "google", callbackURL: callbackUrl }),
       () => onSignedIn?.(),
     )
-  const onPasskeyClick = () =>
-    runAttempt("passkey", () => authClient.signIn.passkey!(), () => onSignedIn?.())
+  }
+  const onPasskeyClick = () => {
+    const passkeyMethod = authClient.signIn.passkey
+    if (!passkeyMethod) {
+      setMethod("passkey", "error", "Passkey sign-in is not configured on this client.")
+      return
+    }
+    return runAttempt("passkey", () => passkeyMethod(), () => onSignedIn?.())
+  }
 
   const showGoogle = !!google
   const showPasskey = !!passkey && isPasskeySupported

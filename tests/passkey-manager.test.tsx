@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
-import { render, screen, fireEvent, waitFor, cleanup } from "@testing-library/react"
+import { StrictMode } from "react"
+import { render, screen, fireEvent, waitFor, cleanup, act } from "@testing-library/react"
 import { PasskeyManager } from "../src/pages/passkey-manager/index.js"
 import type { PasskeyAuthClient } from "../src/client/index.js"
+import { enableWebAuthn, disableWebAuthn } from "./helpers/webauthn.js"
 
 afterEach(() => cleanup())
 
@@ -15,16 +17,9 @@ function makeClient(opts: { addPasskey?: PasskeyAuthClient["passkey"]["addPasske
   }
 }
 
-function enablePasskey() {
-  Object.defineProperty(window, "PublicKeyCredential", { value: function () {}, configurable: true })
-}
-function disablePasskey() {
-  Reflect.deleteProperty(window, "PublicKeyCredential")
-}
-
 describe("<PasskeyManager/>", () => {
-  beforeEach(() => { enablePasskey() })
-  afterEach(() => { disablePasskey() })
+  beforeEach(() => { enableWebAuthn() })
+  afterEach(() => { disableWebAuthn() })
 
   it("renders the default 'Add a passkey' button when WebAuthn is supported", async () => {
     render(<PasskeyManager authClient={makeClient()} />)
@@ -32,7 +27,7 @@ describe("<PasskeyManager/>", () => {
   })
 
   it("renders nothing (or the unsupportedCopy) when WebAuthn is unavailable", () => {
-    disablePasskey()
+    disableWebAuthn()
     const { container } = render(
       <PasskeyManager authClient={makeClient()} unsupportedCopy="Not supported" />,
     )
@@ -68,6 +63,37 @@ describe("<PasskeyManager/>", () => {
     fireEvent.click(button)
     await waitFor(() => expect(screen.queryByText(/passkey added/i)).not.toBeNull())
     expect(button.disabled).toBe(true)
+  })
+
+  it("re-enables the button after the success window so a user can register multiple keys", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    try {
+      render(<PasskeyManager authClient={makeClient()} />)
+      const button = (await screen.findByRole("button", { name: /add a passkey/i })) as HTMLButtonElement
+      fireEvent.click(button)
+      await vi.waitFor(() => expect(screen.queryByText(/passkey added/i)).not.toBeNull())
+      expect(button.disabled).toBe(true)
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1600)
+      })
+      expect(button.disabled).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("fires onAdded under React StrictMode (mounted ref survives double-invoked effects)", async () => {
+    // Repro for the empty-setup-body bug: `useEffect(() => () => { mounted = false }, [])`
+    // would leave mounted.current === false after StrictMode's simulated remount,
+    // silently dropping onAdded?.() on every successful registration in Next.js dev.
+    const onAdded = vi.fn()
+    render(
+      <StrictMode>
+        <PasskeyManager authClient={makeClient()} onAdded={onAdded} />
+      </StrictMode>
+    )
+    fireEvent.click(await screen.findByRole("button", { name: /add a passkey/i }))
+    await waitFor(() => expect(onAdded).toHaveBeenCalledTimes(1))
   })
 
   it("shows an inline error when addPasskey returns an error", async () => {

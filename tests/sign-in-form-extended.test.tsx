@@ -2,6 +2,18 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { render, screen, fireEvent, waitFor, cleanup } from "@testing-library/react"
 import { SignInForm, type SignInAuthClient } from "../src/pages/sign-in/sign-in-form.js"
+import type { MagicLinkAuthClient } from "../src/client/index.js"
+import { enableWebAuthn, disableWebAuthn } from "./helpers/webauthn.js"
+
+// Type-level assertion (never invoked): a magic-link-only client must be
+// assignable to SignInAuthClient. With the previous
+// `Partial<SocialAuthClient> & Partial<PasskeyAuthClient>` shape this failed
+// (`social` and `passkey` collapsed to required after intersection), forcing
+// test fixtures to `as any` and silently breaking 0.2.x consumers.
+function _signInAuthClientAssignability(magicLinkOnly: MagicLinkAuthClient): SignInAuthClient {
+  return magicLinkOnly
+}
+void _signInAuthClientAssignability
 
 afterEach(() => cleanup())
 
@@ -19,16 +31,9 @@ function makeClient(overrides: {
   }
 }
 
-function enablePasskey() {
-  Object.defineProperty(window, "PublicKeyCredential", { value: function () {}, configurable: true })
-}
-function disablePasskey() {
-  Reflect.deleteProperty(window, "PublicKeyCredential")
-}
-
 describe("<SignInForm/> google prop", () => {
-  beforeEach(() => { enablePasskey() })
-  afterEach(() => { disablePasskey() })
+  beforeEach(() => { enableWebAuthn() })
+  afterEach(() => { disableWebAuthn() })
 
   it("does not render the Google button by default", () => {
     render(<SignInForm authClient={makeClient()} />)
@@ -79,8 +84,8 @@ describe("<SignInForm/> google prop", () => {
 })
 
 describe("<SignInForm/> passkey prop", () => {
-  beforeEach(() => { enablePasskey() })
-  afterEach(() => { disablePasskey() })
+  beforeEach(() => { enableWebAuthn() })
+  afterEach(() => { disableWebAuthn() })
 
   it("renders the passkey button when WebAuthn is supported", async () => {
     render(<SignInForm authClient={makeClient()} passkey />)
@@ -88,7 +93,7 @@ describe("<SignInForm/> passkey prop", () => {
   })
 
   it("hides the passkey button when window.PublicKeyCredential is undefined", () => {
-    disablePasskey()
+    disableWebAuthn()
     render(<SignInForm authClient={makeClient()} passkey />)
     expect(screen.queryByRole("button", { name: /sign in with passkey/i })).toBeNull()
   })
@@ -125,8 +130,8 @@ describe("<SignInForm/> passkey prop", () => {
 })
 
 describe("<SignInForm/> magicLink toggle + divider", () => {
-  beforeEach(() => { enablePasskey() })
-  afterEach(() => { disablePasskey() })
+  beforeEach(() => { enableWebAuthn() })
+  afterEach(() => { disableWebAuthn() })
 
   it("renders the email form by default", () => {
     render(<SignInForm authClient={makeClient()} />)
@@ -160,8 +165,8 @@ describe("<SignInForm/> magicLink toggle + divider", () => {
 })
 
 describe("<SignInForm/> per-method status isolation", () => {
-  beforeEach(() => { enablePasskey() })
-  afterEach(() => { disablePasskey() })
+  beforeEach(() => { enableWebAuthn() })
+  afterEach(() => { disableWebAuthn() })
 
   it("a pending google attempt does not disable the email input, magic-link submit, or passkey button", async () => {
     let resolveSocial: (v: { error: null }) => void = () => {}
