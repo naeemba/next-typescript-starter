@@ -1,0 +1,75 @@
+// Inlined string templates for the 7 shim files the CLI writes.
+// Kept as a separate module purely for readability; bin/cli.mjs imports
+// the named exports.
+
+export const libAuth = ({ google, passkey }) => `import { createAuth } from "@naeemba/next-starter/auth"
+
+export const auth = createAuth({${google ? `
+  google: {
+    // GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET read from process.env by default.
+  },` : ""}${passkey ? `
+  passkey: {
+    rpName: "My App",
+    // rpID / origin default to BETTER_AUTH_URL's host.
+  },` : ""}
+  // singleAdmin: "owner@example.com",  // optional: lock sign-in to one email
+})
+`
+
+export const libAuthClient = `"use client"
+import { createAuthClient } from "@naeemba/next-starter/client"
+
+export const authClient = createAuthClient({
+  baseURL: process.env.NEXT_PUBLIC_BETTER_AUTH_URL,
+})
+`
+
+export const libAuthServer = `import { createServer } from "@naeemba/next-starter/server"
+import { auth } from "./auth"
+
+export const { getSession, requireSession } = createServer(auth)
+`
+
+export const dbSchema = `export { user, session, account, verification, passkey } from "@naeemba/next-starter/schema"
+`
+
+export const drizzleConfig = `import { defineConfig } from "drizzle-kit"
+
+export default defineConfig({
+  schema: "./db/schema.ts",
+  out: "./drizzle",
+  dialect: "postgresql",
+  dbCredentials: {
+    url: process.env.DATABASE_URL,
+  },
+})
+`
+
+export const authRoute = `import { toNextJsHandler } from "@naeemba/next-starter/auth-route"
+import { auth } from "@/lib/auth"
+
+export const { GET, POST } = toNextJsHandler(auth)
+`
+
+export const signInPage = `import { SignInPage } from "@naeemba/next-starter/pages/sign-in"
+import { authClient } from "@/lib/auth-client"
+
+export default function Page() {
+  return <SignInPage authClient={authClient} />
+}
+`
+
+export const envExample = `DATABASE_URL=postgres://user:pass@host:5432/db
+BETTER_AUTH_SECRET=<32+ char random string — generate with: openssl rand -hex 32>
+BETTER_AUTH_URL=http://localhost:3000
+NEXT_PUBLIC_BETTER_AUTH_URL=http://localhost:3000
+
+# Optional — magic-link email delivery via Resend.
+# When unset in development, magic links are printed to the server log.
+RESEND_API_KEY=
+EMAIL_FROM=auth@example.com
+
+# Optional — enable google sign-in.
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+`

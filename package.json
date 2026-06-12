@@ -31,7 +31,11 @@
   "engines": {
     "node": ">=20"
   },
+  "bin": {
+    "next-starter": "./bin/cli.mjs"
+  },
   "files": [
+    "bin",
     "dist",
     "README.md",
     "UPGRADING.md",
