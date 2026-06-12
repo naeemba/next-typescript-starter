@@ -1,27 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest"
 import { createAuth } from "../src/auth/index.js"
+import { setupAuthEnv, restoreAuthEnv, pluginIds, findPlugin } from "./helpers/auth-internals.js"
 
-const ORIGINAL_ENV = { ...process.env }
+beforeEach(() => setupAuthEnv())
+afterEach(() => restoreAuthEnv())
 
-beforeEach(() => {
-  process.env = {
-    ...ORIGINAL_ENV,
-    DATABASE_URL: "postgres://u:p@h/d",
-    BETTER_AUTH_SECRET: "x".repeat(32),
-    BETTER_AUTH_URL: "https://app.example.com",
-  }
-})
-afterEach(() => { process.env = { ...ORIGINAL_ENV } })
-
-function pluginIds(auth: unknown): string[] {
-  return ((auth as { options: { plugins?: Array<{ id?: string }> } }).options.plugins ?? [])
-    .map((p) => p.id ?? "")
-}
-
-function passkeyPlugin(auth: unknown): { options?: { rpID?: string; rpName?: string; origin?: string } } | undefined {
-  return ((auth as { options: { plugins?: Array<{ id?: string; options?: { rpID?: string; rpName?: string; origin?: string } }> } }).options.plugins ?? [])
-    .find((p) => p.id === "passkey")
-}
+type PasskeyOpts = { rpID?: string; rpName?: string; origin?: string }
+const passkeyPlugin = (auth: unknown) =>
+  findPlugin(auth, "passkey") as { options?: PasskeyOpts } | undefined
 
 describe("createAuth({ passkey })", () => {
   it("loads the passkey plugin when opts.passkey is set", () => {

@@ -1,22 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest"
 import { createAuth } from "../src/auth/index.js"
+import { setupAuthEnv, restoreAuthEnv, authOpts } from "./helpers/auth-internals.js"
 
-const ORIGINAL_ENV = { ...process.env }
-
-beforeEach(() => {
-  process.env = {
-    ...ORIGINAL_ENV,
-    DATABASE_URL: "postgres://u:p@h/d",
-    BETTER_AUTH_SECRET: "x".repeat(32),
-    BETTER_AUTH_URL: "https://app.example.com",
-    GOOGLE_CLIENT_ID: undefined,
-    GOOGLE_CLIENT_SECRET: undefined,
-  }
-})
-
-afterEach(() => {
-  process.env = { ...ORIGINAL_ENV }
-})
+beforeEach(() => setupAuthEnv({ GOOGLE_CLIENT_ID: undefined, GOOGLE_CLIENT_SECRET: undefined }))
+afterEach(() => restoreAuthEnv())
 
 type AuthOpts = {
   socialProviders?: {
@@ -43,9 +30,7 @@ type AuthOpts = {
   }
 }
 
-function opts(auth: unknown): AuthOpts {
-  return (auth as { options: AuthOpts }).options
-}
+const opts = (auth: unknown) => authOpts<AuthOpts>(auth)
 
 describe("createAuth({ google })", () => {
   it("wires the google socialProvider when clientId/Secret are passed as opts", () => {
