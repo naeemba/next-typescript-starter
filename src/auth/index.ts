@@ -2,7 +2,7 @@ import { betterAuth, type Auth, type BetterAuthOptions } from "better-auth"
 import { magicLink } from "better-auth/plugins"
 import { passkey as passkeyPlugin } from "@better-auth/passkey"
 import { drizzleAdapter } from "better-auth/adapters/drizzle"
-import { createDb } from "../db/index.js"
+import { createDb, createDbOptionsFromEnv } from "../db/index.js"
 import * as schema from "../schema/index.js"
 import { sendMagicLink, type MagicLinkEmailFields } from "../email/index.js"
 import { parseEnv } from "./config.js"
@@ -82,7 +82,7 @@ export function createAuth(opts: CreateAuthOptions = {}): Auth {
   }
 
   const env = parseEnv(process.env, overrides)
-  const db = opts.db ?? createDb(env.DATABASE_URL)
+  const db = opts.db ?? createDb(env.DATABASE_URL, createDbOptionsFromEnv(process.env))
   const magicLinkExpiresIn = opts.magicLink?.expiresIn ?? 600
   const allowlist = opts.magicLink?.allowlist
   const customTemplate = opts.magicLink?.email
@@ -112,34 +112,36 @@ export function createAuth(opts: CreateAuthOptions = {}): Auth {
           "(either as opts.google.clientId/clientSecret or in process.env)."
       )
     }
-    type GoogleConfig = NonNullable<BetterAuthOptions["socialProviders"]>["google"]
-    let googleConfig = {
+    type GoogleConfig = NonNullable<NonNullable<BetterAuthOptions["socialProviders"]>["google"]>
+    // `satisfies` (not `as`) so an upstream rename of `mapProfileToUser` /
+    // `scopes` etc. surfaces as a compile error on the next better-auth
+    // bump instead of silently no-opping at runtime.
+    const baseGoogle = {
       clientId,
       clientSecret,
       ...(opts.google.scopes ? { scopes: opts.google.scopes } : {}),
-    } as GoogleConfig
-    if (opts.google.allowlist) {
-      const googleAllowlist = opts.google.allowlist
-      // Gate inside the Google getUserInfo path so the check fires for both
-      // first-time signup AND account linking (linkAccount never reaches the
-      // global user.create.before hook), and does NOT fire for magic-link
-      // signups (the global hook would over-apply across providers).
-      googleConfig = {
-        ...googleConfig,
-        mapProfileToUser: async (profile) => {
-          const ok = await googleAllowlist({
-            email: profile.email,
-            emailVerified: profile.email_verified,
-          })
-          if (!ok) {
-            throw new Error(
-              "[@naeemba/next-starter] Sign-in rejected by google.allowlist."
-            )
-          }
-          return {}
-        },
-      } as GoogleConfig
-    }
+    } satisfies GoogleConfig
+    const googleConfig = opts.google.allowlist
+      ? ({
+          ...baseGoogle,
+          // Gate inside the Google getUserInfo path so the check fires for
+          // both first-time signup AND account linking (linkAccount never
+          // reaches the global user.create.before hook), and does NOT fire
+          // for magic-link signups.
+          mapProfileToUser: async (profile: { email: string; email_verified: boolean }) => {
+            const ok = await opts.google!.allowlist!({
+              email: profile.email,
+              emailVerified: profile.email_verified,
+            })
+            if (!ok) {
+              throw new Error(
+                "[@naeemba/next-starter] Sign-in rejected by google.allowlist."
+              )
+            }
+            return {}
+          },
+        } satisfies GoogleConfig)
+      : baseGoogle
     config.socialProviders = {
       ...(config.socialProviders ?? {}),
       google: googleConfig,
@@ -150,6 +152,11 @@ export function createAuth(opts: CreateAuthOptions = {}): Auth {
   // pre-configure trustedProviders for a provider they'll add later. When
   // google is enabled, it's auto-added to the trusted set rather than
   // silently dropped by a verbatim override.
+  //
+  // Note: this stays as `!== false` rather than the `?? true` form used in
+  // createDb / createAuthClient because `accountLinking`'s type is a
+  // discriminated union (`false | { trustedProviders } | undefined`), and
+  // `!== false` is the form that lets TS narrow the union inside the block.
   if (opts.accountLinking !== false) {
     const trustedProviders = new Set<string>([
       ...(opts.accountLinking?.trustedProviders ?? []),

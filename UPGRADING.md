@@ -17,7 +17,16 @@
 
 postgres.js defaults to `prepare: true` (prepared-statement mode), which **breaks pgBouncer transaction-pool mode** — the default for the Supabase pooler (port 6543) and the standard Neon pooler URL. Symptom: `prepared statement "..." does not exist` on the second request after a connection rotation.
 
-`createDb` exposes pool options for this case:
+The documented `import { db }` proxy and `createAuth({})` (without an explicit `opts.db`) both honour pool tuning via env vars — so a Supabase/Neon consumer who follows the README bare-import path just sets:
+
+```bash
+# .env.local — for Supabase pooler port 6543 / Neon pooler URL
+DATABASE_PREPARE=false
+DATABASE_IDLE_TIMEOUT=20
+# DATABASE_POOL_MAX=10  # optional
+```
+
+The explicit-options path still works if you'd rather inject a tuned client:
 
 ```ts
 import { createDb } from "@naeemba/next-starter/db"

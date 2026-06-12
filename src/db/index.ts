@@ -38,6 +38,29 @@ export function createDb(databaseUrl: string, opts: CreateDbOptions = {}): Db {
   return drizzle(client, { schema })
 }
 
+/**
+ * Reads pool tuning options from `process.env`. Lets the documented
+ * `import { db }` proxy and `createAuth({})` honour `DATABASE_PREPARE`,
+ * `DATABASE_POOL_MAX`, `DATABASE_IDLE_TIMEOUT` without making consumers
+ * thread an opts object through every entry point.
+ */
+export function createDbOptionsFromEnv(
+  source: Record<string, string | undefined> = process.env
+): CreateDbOptions {
+  const opts: CreateDbOptions = {}
+  if (source.DATABASE_PREPARE === "false") opts.prepare = false
+  if (source.DATABASE_PREPARE === "true") opts.prepare = true
+  if (source.DATABASE_POOL_MAX) {
+    const n = Number(source.DATABASE_POOL_MAX)
+    if (Number.isFinite(n) && n > 0) opts.max = n
+  }
+  if (source.DATABASE_IDLE_TIMEOUT) {
+    const n = Number(source.DATABASE_IDLE_TIMEOUT)
+    if (Number.isFinite(n) && n >= 0) opts.idleTimeout = n
+  }
+  return opts
+}
+
 let _db: Db | null = null
 function getDb(): Db {
   if (_db) return _db
@@ -48,7 +71,7 @@ function getDb(): Db {
         "Set it in your .env or environment before using the `db` client."
     )
   }
-  _db = createDb(url)
+  _db = createDb(url, createDbOptionsFromEnv())
   return _db
 }
 
