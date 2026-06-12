@@ -75,9 +75,15 @@ export function createDbOptionsFromEnv(
   }
   if (source.DATABASE_IDLE_TIMEOUT !== undefined) {
     const n = Number(source.DATABASE_IDLE_TIMEOUT)
-    if (!Number.isFinite(n) || n < 0 || !Number.isInteger(n)) {
+    // Rejecting 0 (not just negatives): postgres.js maps idle_timeout=0 to
+    // "never close idle connections", which is the connection-leak mode
+    // this env var exists to OVERRIDE. Accepting it would silently invert
+    // the user's intent on a typo'd "disable" attempt.
+    if (!Number.isFinite(n) || n <= 0 || !Number.isInteger(n)) {
       throw new Error(
-        `[@naeemba/next-starter] DATABASE_IDLE_TIMEOUT must be a non-negative integer, got: ${JSON.stringify(source.DATABASE_IDLE_TIMEOUT)}`,
+        `[@naeemba/next-starter] DATABASE_IDLE_TIMEOUT must be a positive integer ` +
+          `(postgres.js's '0 = no timeout' default is the connection-leak mode this var exists to override), ` +
+          `got: ${JSON.stringify(source.DATABASE_IDLE_TIMEOUT)}`,
       )
     }
     opts.idleTimeout = n

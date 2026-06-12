@@ -67,7 +67,7 @@ describe("createDbOptionsFromEnv", () => {
     expect(() => createDbOptionsFromEnv({ DATABASE_POOL_MAX: "0" })).toThrow(/DATABASE_POOL_MAX/)
   })
 
-  it("throws on a non-numeric or negative DATABASE_IDLE_TIMEOUT", () => {
+  it("throws on a non-numeric or non-positive DATABASE_IDLE_TIMEOUT", () => {
     expect(() => createDbOptionsFromEnv({ DATABASE_IDLE_TIMEOUT: "abc" })).toThrow(
       /DATABASE_IDLE_TIMEOUT/,
     )
@@ -76,7 +76,13 @@ describe("createDbOptionsFromEnv", () => {
     )
   })
 
-  it("accepts DATABASE_IDLE_TIMEOUT=0 (no timeout)", () => {
-    expect(createDbOptionsFromEnv({ DATABASE_IDLE_TIMEOUT: "0" })).toEqual({ idleTimeout: 0 })
+  // postgres.js treats idle_timeout=0 as "never close idle connections" — the
+  // exact footgun the createDb JSDoc warns against. Accepting a typo'd 0
+  // would silently re-enable the connection-leak mode this env var exists to
+  // override. Reject it at boot with a message explaining the trap.
+  it("throws on DATABASE_IDLE_TIMEOUT=0 (postgres.js no-timeout footgun)", () => {
+    expect(() => createDbOptionsFromEnv({ DATABASE_IDLE_TIMEOUT: "0" })).toThrow(
+      /DATABASE_IDLE_TIMEOUT.*positive integer/,
+    )
   })
 })
