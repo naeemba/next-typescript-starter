@@ -114,9 +114,29 @@ export function createAuth(opts: CreateAuthOptions = {}): Auth {
   }
 
   const env = parseEnv(process.env, overrides)
+
+  // Pure-validation gate: every synchronous input-shape check runs before
+  // any side-effecting resource construction so a config error never
+  // leaves a freshly-built postgres-js client + drizzle wrapper dangling.
+  // Add new preconditions here, not below createDb.
+  const singleAdminSet = normalizeSingleAdmin(opts.singleAdmin)
+  let resolvedGoogle: { clientId: string; clientSecret: string } | undefined
+  if (opts.google) {
+    const clientId = opts.google.clientId ?? env.GOOGLE_CLIENT_ID
+    const clientSecret = opts.google.clientSecret ?? env.GOOGLE_CLIENT_SECRET
+    if (!clientId || !clientSecret) {
+      throw new Error(
+        "[@naeemba/next-starter] createAuth({ google }) requires GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET " +
+          "(either as opts.google.clientId/clientSecret or in process.env)."
+      )
+    }
+    resolvedGoogle = { clientId, clientSecret }
+  }
+  // Passkey block validates `new URL(env.BETTER_AUTH_URL)` — parseEnv already
+  // accepts only URL-shaped values so the URL constructor cannot throw here.
+
   const db = opts.db ?? createDb(env.DATABASE_URL, createDbOptionsFromEnv(process.env))
   const magicLinkExpiresIn = opts.magicLink?.expiresIn ?? 600
-  const singleAdminSet = normalizeSingleAdmin(opts.singleAdmin)
   const allowlist =
     opts.magicLink?.allowlist ??
     (singleAdminSet ? (email: string) => matchesSingleAdmin(singleAdminSet, email) : undefined)
@@ -138,22 +158,14 @@ export function createAuth(opts: CreateAuthOptions = {}): Auth {
     ],
   }
 
-  if (opts.google) {
-    const clientId = opts.google.clientId ?? env.GOOGLE_CLIENT_ID
-    const clientSecret = opts.google.clientSecret ?? env.GOOGLE_CLIENT_SECRET
-    if (!clientId || !clientSecret) {
-      throw new Error(
-        "[@naeemba/next-starter] createAuth({ google }) requires GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET " +
-          "(either as opts.google.clientId/clientSecret or in process.env)."
-      )
-    }
+  if (opts.google && resolvedGoogle) {
     type GoogleConfig = NonNullable<NonNullable<BetterAuthOptions["socialProviders"]>["google"]>
     // `satisfies` (not `as`) so an upstream rename of `mapProfileToUser` /
     // `scopes` etc. surfaces as a compile error on the next better-auth
     // bump instead of silently no-opping at runtime.
     const baseGoogle = {
-      clientId,
-      clientSecret,
+      clientId: resolvedGoogle.clientId,
+      clientSecret: resolvedGoogle.clientSecret,
       ...(opts.google.scopes ? { scopes: opts.google.scopes } : {}),
     } satisfies GoogleConfig
     const googleAllowlist =
