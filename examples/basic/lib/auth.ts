@@ -1,3 +1,10 @@
 import { createAuth } from "@naeemba/next-starter/auth"
 
-export const auth = createAuth()
+const googleConfigured = !!process.env.GOOGLE_CLIENT_ID && !!process.env.GOOGLE_CLIENT_SECRET
+
+export const auth = createAuth({
+  ...(googleConfigured && { google: {} }),
+  passkey: {
+    rpName: "Next Starter Example",
+  },
+})
