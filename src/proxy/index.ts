@@ -1,6 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server"
 
-export interface CreateMiddlewareOptions {
+// Re-exported so consumers who write their own proxy (host canonicalization,
+// geo gating, A/B routing, etc.) can still do the cheap session-cookie
+// presence check this module uses internally without reaching past the
+// package into `better-auth/cookies` directly.
+export { getSessionCookie } from "better-auth/cookies"
+
+export interface CreateProxyOptions {
   /**
    * Path patterns to protect. Supports a small subset of Next.js path syntax:
    *   `:name`    -> matches a single non-slash segment
@@ -56,7 +62,7 @@ function compile(pattern: string): RegExp {
       // nothing, letting unauthenticated traffic past `protect`. Refuse
       // at construction so the consumer notices instead.
       throw new Error(
-        `[@naeemba/next-starter] createMiddleware: pattern '${pattern}' uses unsupported modifier ` +
+        `[@naeemba/next-starter] createProxy: pattern '${pattern}' uses unsupported modifier ` +
           `'${raw}'. Supported segments are :name, :name*, *, and **. Drop the trailing '${raw.slice(-1)}' ` +
           `or rewrite the route (e.g. '/admin/:path*').`,
       )
@@ -88,10 +94,31 @@ function escapeRegex(s: string): string {
   return s.replace(/[.+?^${}()|[\]\\]/g, "\\$&")
 }
 
-export function createMiddleware(opts: CreateMiddlewareOptions) {
+/**
+ * Build the `proxy` function for Next 16's `proxy.ts` convention.
+ * Next 16 renamed `middleware.ts` -> `proxy.ts` and `middleware()` -> `proxy()`;
+ * this package targets Next >= 16 and only ships the proxy form.
+ *
+ * ```ts
+ * // proxy.ts (project root)
+ * import { createProxy } from "@naeemba/next-starter/proxy"
+ *
+ * export default createProxy({
+ *   protect: ["/admin/:path*", "/dashboard/:path*"],
+ *   signInPath: "/sign-in",
+ * })
+ *
+ * export const config = { matcher: ["/((?!_next/|favicon.ico|api/auth/).*)"] }
+ * ```
+ *
+ * Edge-safe: only checks for the better-auth session cookie's *presence*.
+ * The real auth gate stays at the server-component level via
+ * `requireSession()` (cookie presence != a valid session).
+ */
+export function createProxy(opts: CreateProxyOptions) {
   if (!opts.protect || opts.protect.length === 0) {
     throw new Error(
-      "[@naeemba/next-starter] createMiddleware: 'protect' must be a non-empty array. Pass at least one path pattern (e.g. ['/admin/:path*']).",
+      "[@naeemba/next-starter] createProxy: 'protect' must be a non-empty array. Pass at least one path pattern (e.g. ['/admin/:path*']).",
     )
   }
   const signInPath = opts.signInPath ?? "/sign-in"
@@ -112,13 +139,13 @@ export function createMiddleware(opts: CreateMiddlewareOptions) {
   const offending = opts.protect.find((_p, i) => compiled[i]!.test(signInPathNoSlash))
   if (offending !== undefined) {
     throw new Error(
-      `[@naeemba/next-starter] createMiddleware: 'protect' pattern '${offending}' matches signInPath ` +
+      `[@naeemba/next-starter] createProxy: 'protect' pattern '${offending}' matches signInPath ` +
         `('${signInPath}') and would cause an infinite redirect loop. Narrow the pattern, exclude ` +
         `the sign-in path, or pass a different signInPath.`,
     )
   }
 
-  return function middleware(req: NextRequest): NextResponse {
+  return function proxy(req: NextRequest): NextResponse {
     const pathname = req.nextUrl.pathname
     // Defense-in-depth: even with the boot-time guard above, a consumer
     // rewrite upstream could still hand us `/sign-in/` under

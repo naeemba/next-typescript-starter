@@ -111,9 +111,25 @@ export function createAuthClient(opts?: CreateAuthClientOptions): AuthClientWith
 export function createAuthClient(
   opts: CreateAuthClientOptions = {},
 ): AuthClient | AuthClientWithoutPasskey {
+  // Resolution order:
+  //   1. explicit opts.baseURL                       — caller knows best
+  //   2. NEXT_PUBLIC_BETTER_AUTH_URL                  — set when site is
+  //      served from a different origin than the browser sees (e.g. a
+  //      proxy in front, or a public URL the client must use)
+  //   3. window.location.origin                       — same-origin default,
+  //      lets consumers drop NEXT_PUBLIC_BETTER_AUTH_URL in the common case
+  //
+  // (1) and (2) are evaluated at module load (build-time inlined for Next),
+  // (3) at first call site in the browser. The fallback chain is structured
+  // so a `process` shim that defines an empty NEXT_PUBLIC_BETTER_AUTH_URL
+  // doesn't short-circuit to "" — we only consume the env var when it's a
+  // non-empty string.
+  const envBaseURL =
+    typeof process !== "undefined" ? process.env.NEXT_PUBLIC_BETTER_AUTH_URL : undefined
   const baseURL =
     opts.baseURL ??
-    (typeof process !== "undefined" ? process.env.NEXT_PUBLIC_BETTER_AUTH_URL : undefined)
+    (envBaseURL && envBaseURL.length > 0 ? envBaseURL : undefined) ??
+    (typeof window !== "undefined" ? window.location.origin : undefined)
   const plugins: Array<ReturnType<typeof magicLinkClient>> = [magicLinkClient()]
   // Cast: passkeyClient() returns better-auth's BetterAuthClientPlugin (non-
   // optional `id`), but we type the factory structurally so our `.d.ts` doesn't

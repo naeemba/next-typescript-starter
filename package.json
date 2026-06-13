@@ -1,6 +1,6 @@
 {
   "name": "@naeemba/next-starter",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Opinionated Next.js + Drizzle + Better Auth starter, shipped as a versioned package.",
   "license": "MIT",
   "repository": {
@@ -70,9 +70,9 @@
       "types": "./dist/email/index.d.ts",
       "default": "./dist/email/index.js"
     },
-    "./middleware": {
-      "types": "./dist/middleware/index.d.ts",
-      "default": "./dist/middleware/index.js"
+    "./proxy": {
+      "types": "./dist/proxy/index.d.ts",
+      "default": "./dist/proxy/index.js"
     },
     "./pages/sign-in": {
       "types": "./dist/pages/sign-in/index.d.ts",

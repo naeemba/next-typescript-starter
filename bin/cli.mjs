@@ -3,8 +3,8 @@ import { mkdir, readFile, writeFile, access } from "node:fs/promises"
 import { dirname, join, resolve, relative } from "node:path"
 import { argv, cwd, exit, stdout } from "node:process"
 import {
-  libAuth, libAuthClient, libAuthServer, dbSchema, drizzleConfig,
-  authRoute, signInPage, envExample,
+  libAuth, libAuthClient, libAuthServer, dbSchema, dbSchemaReExport,
+  drizzleConfig, authRoute, signInPage, envExample,
 } from "./templates.mjs"
 
 function parseArgs(input) {
@@ -14,6 +14,7 @@ function parseArgs(input) {
     google: true,
     passkey: true,
     skipEnv: false,
+    cleanScripts: false,
     targetDir: cwd(),
   }
   const positional = []
@@ -25,6 +26,7 @@ function parseArgs(input) {
     else if (a === "--no-google") flags.google = false
     else if (a === "--no-passkey") flags.passkey = false
     else if (a === "--skip-env") flags.skipEnv = true
+    else if (a === "--clean-scripts") flags.cleanScripts = true
     else if (a === "--help" || a === "-h") return { help: true }
     else if (a.startsWith("--")) {
       stdout.write(`Unknown flag: ${a}\n`)
@@ -46,13 +48,17 @@ function helpText() {
   Next.js app.
 
   Options:
-    --force        overwrite files that already exist
-    --src          force writes under src/ (auto-detected by default)
-    --no-src       force writes at project root
-    --no-google    omit the google block from lib/auth.ts
-    --no-passkey   omit the passkey block from lib/auth.ts
-    --skip-env     do not write .env.example
-    -h, --help     this message
+    --force          overwrite starter-owned files that already exist
+                     (consumer-owned files — db/schema.ts, drizzle.config.ts
+                     — are never overwritten; db/schema.ts gets the
+                     re-export prepended if missing)
+    --src            force writes under src/ (auto-detected by default)
+    --no-src         force writes at project root
+    --no-google      omit the google block from lib/auth.ts
+    --no-passkey     omit the passkey block from lib/auth.ts
+    --skip-env       do not write .env.example
+    --clean-scripts  delete obsolete package.json scripts (e.g. auth:generate)
+    -h, --help       this message
 `
 }
 
@@ -194,11 +200,113 @@ async function hasAtAlias(target) {
   return false
 }
 
-async function writeFileSafe(path, content, force, status) {
+// Detects an existing `db/index.ts` (or `src/db/index.ts`) that exports
+// a named `db` symbol. When present, lib/auth.ts is generated with
+// `import { db } from "@/db"` and `db` is wired into `createAuth({ db })`
+// — so the consumer doesn't end up with two postgres-js pools to the
+// same database (the starter's lazy proxy + their own client). When
+// absent, fall back to the lazy proxy seeded from DATABASE_URL.
+async function hasNamedDbExport(target, prefix) {
+  const candidate = join(target, `${prefix}db/index.ts`)
+  if (!(await exists(candidate))) return false
+  try {
+    const content = await readFile(candidate, "utf8")
+    if (/\bexport\s+(const|let|var|function|async\s+function)\s+db\b/.test(content)) return true
+    if (/\bexport\s*\{[^}]*\bdb\s*[,}]/.test(content)) return true
+    if (/\bexport\s*\{[^}]*\bas\s+db\s*[,}]/.test(content)) return true
+    return false
+  } catch {
+    return false
+  }
+}
+
+// The old README told consumers to add an `auth:generate` script that
+// shelled out to `better-auth generate`. The starter now ships the schema
+// directly from `@naeemba/next-starter/schema`, so any script that runs
+// `better-auth generate` is dead code that produces a stale file the
+// consumer then commits and chases. Detect any package.json scripts that
+// invoke it and either warn or remove based on --clean-scripts.
+async function detectObsoleteScripts(target) {
+  const pkgPath = join(target, "package.json")
+  if (!(await exists(pkgPath))) return []
+  try {
+    const pkg = JSON.parse(await readFile(pkgPath, "utf8"))
+    const scripts = pkg.scripts ?? {}
+    const obsolete = []
+    for (const [name, value] of Object.entries(scripts)) {
+      if (typeof value !== "string") continue
+      if (/\bbetter-auth\s+generate\b/.test(value)) {
+        obsolete.push({ name, value, reason: "runs `better-auth generate` (schema now ships from @naeemba/next-starter/schema)" })
+      }
+    }
+    return obsolete
+  } catch {
+    return []
+  }
+}
+
+async function removeObsoleteScripts(target, obsolete) {
+  const pkgPath = join(target, "package.json")
+  const raw = await readFile(pkgPath, "utf8")
+  const pkg = JSON.parse(raw)
+  for (const { name } of obsolete) {
+    if (pkg.scripts && name in pkg.scripts) delete pkg.scripts[name]
+  }
+  const trailingNewline = raw.endsWith("\n") ? "\n" : ""
+  await writeFile(pkgPath, JSON.stringify(pkg, null, 2) + trailingNewline, "utf8")
+}
+
+// File classification for write strategy:
+// - "starter":       starter owns this. Skip if exists; overwrite with --force.
+// - "schema-merge":  consumer-owned with a required re-export from
+//                    @naeemba/next-starter/schema. If file exists and the
+//                    re-export is already present, leave it alone. If file
+//                    exists but the re-export is missing, prepend the line
+//                    (preserving the consumer's tables). If file doesn't
+//                    exist, scaffold the one-line shim.
+//                    --force does NOT replace this file. Destroying the
+//                    consumer's table definitions was the v0.4 footgun
+//                    this classification exists to close.
+// - "consumer-skip": consumer-owned. Never overwrite, even with --force.
+//                    drizzle.config.ts often carries verbosity/casing/
+//                    schemaFilter customizations the CLI can't reproduce.
+async function writeFileSafe(kind, path, content, force, status) {
   await mkdir(dirname(path), { recursive: true })
+
+  if (kind === "schema-merge") {
+    if (await exists(path)) {
+      const existing = await readFile(path, "utf8")
+      if (existing.includes("@naeemba/next-starter/schema")) {
+        status.skipped.push({ path, note: "re-export already present" })
+        return
+      }
+      const reExport = content
+      const sep = existing.startsWith("\n") ? "" : "\n"
+      const merged = `${reExport}${sep}${existing}`
+      await writeFile(path, merged, "utf8")
+      status.merged.push(path)
+      return
+    }
+    // No existing file — scaffold the one-line shim.
+    await writeFile(path, content, "utf8")
+    status.created.push(path)
+    return
+  }
+
+  if (kind === "consumer-skip") {
+    if (await exists(path)) {
+      status.preserved.push(path)
+      return
+    }
+    await writeFile(path, content, "utf8")
+    status.created.push(path)
+    return
+  }
+
+  // kind === "starter"
   if (await exists(path)) {
     if (!force) {
-      status.skipped.push(path)
+      status.skipped.push({ path, note: undefined })
       return
     }
     status.overwritten.push(path)
@@ -234,28 +342,47 @@ async function run() {
 
   const useSrc = args.src ?? (await detectSrcLayout(target))
   const prefix = useSrc ? "src/" : ""
+  const useExistingDb = await hasNamedDbExport(target, prefix)
 
-  const status = { created: [], overwritten: [], skipped: [] }
+  const status = {
+    created: [],
+    overwritten: [],
+    skipped: [],     // entries: { path, note? }
+    merged: [],
+    preserved: [],
+  }
 
   const files = [
-    [join(target, `${prefix}lib/auth.ts`),                                libAuth({ google: args.google, passkey: args.passkey })],
-    [join(target, `${prefix}lib/auth-client.ts`),                         libAuthClient({ passkey: args.passkey })],
-    [join(target, `${prefix}lib/auth-server.ts`),                         libAuthServer],
-    [join(target, `${prefix}db/schema.ts`),                               dbSchema({ passkey: args.passkey })],
-    [join(target, `drizzle.config.ts`),                                    drizzleConfig({ src: useSrc })],
-    [join(target, `${prefix}app/api/auth/[...all]/route.ts`),              authRoute],
-    [join(target, `${prefix}app/sign-in/page.tsx`),                        signInPage({ google: args.google, passkey: args.passkey })],
+    ["starter",       join(target, `${prefix}lib/auth.ts`),                       libAuth({ google: args.google, passkey: args.passkey, db: useExistingDb })],
+    ["starter",       join(target, `${prefix}lib/auth-client.ts`),                libAuthClient({ passkey: args.passkey })],
+    ["starter",       join(target, `${prefix}lib/auth-server.ts`),                libAuthServer],
+    ["schema-merge",  join(target, `${prefix}db/schema.ts`),                      dbSchemaReExport({ passkey: args.passkey })],
+    ["consumer-skip", join(target, `drizzle.config.ts`),                          drizzleConfig({ src: useSrc })],
+    ["starter",       join(target, `${prefix}app/api/auth/[...all]/route.ts`),    authRoute],
+    ["starter",       join(target, `${prefix}app/sign-in/page.tsx`),              signInPage({ google: args.google, passkey: args.passkey })],
   ]
-  if (!args.skipEnv) files.push([join(target, ".env.example"), envExample])
+  if (!args.skipEnv) files.push(["starter", join(target, ".env.example"), envExample])
 
-  for (const [path, content] of files) {
-    await writeFileSafe(path, content, args.force, status)
+  for (const [kind, path, content] of files) {
+    await writeFileSafe(kind, path, content, args.force, status)
   }
 
   const rel = (p) => relative(target, p) || "."
   for (const p of status.created)     stdout.write(`  + ${rel(p)}\n`)
   for (const p of status.overwritten) stdout.write(`  ! ${rel(p)}  (overwritten)\n`)
-  for (const p of status.skipped)     stdout.write(`  = ${rel(p)}  (exists, use --force to overwrite)\n`)
+  for (const p of status.merged)      stdout.write(`  ~ ${rel(p)}  (merged: prepended @naeemba/next-starter/schema re-export)\n`)
+  for (const p of status.preserved)   stdout.write(`  = ${rel(p)}  (exists, consumer-owned — not overwritten)\n`)
+  for (const entry of status.skipped) {
+    const note = entry.note ? ` (${entry.note})` : "  (exists, use --force to overwrite)"
+    stdout.write(`  = ${rel(entry.path)}${note}\n`)
+  }
+
+  if (useExistingDb) {
+    stdout.write(
+      `\n  i Detected ${prefix}db/index.ts exporting \`db\` — lib/auth.ts wires it into\n` +
+        `    createAuth({ db }) so you don't end up with two postgres pools.\n`,
+    )
+  }
 
   // Warn if the generated `@/lib/...` imports won't resolve. We don't patch
   // tsconfig.json automatically — that's the consumer's surface — but a
@@ -266,6 +393,22 @@ async function run() {
         `    route.ts and page.tsx use \`@/lib/...\` imports — add the alias to\n` +
         `    compilerOptions.paths to make them resolve.\n`,
     )
+  }
+
+  const obsolete = await detectObsoleteScripts(target)
+  if (obsolete.length > 0) {
+    if (args.cleanScripts) {
+      await removeObsoleteScripts(target, obsolete)
+      stdout.write(`\n  ~ package.json: removed obsolete script${obsolete.length > 1 ? "s" : ""}\n`)
+      for (const { name, reason } of obsolete) {
+        stdout.write(`      - ${name}  (${reason})\n`)
+      }
+    } else {
+      stdout.write(`\n  ! Found obsolete package.json script${obsolete.length > 1 ? "s" : ""} (re-run with --clean-scripts to remove):\n`)
+      for (const { name, reason } of obsolete) {
+        stdout.write(`      - ${name}  (${reason})\n`)
+      }
+    }
   }
 
   const passkeyHint = args.passkey

@@ -31,7 +31,7 @@ function makeReq(opts: {
   const origin = opts.origin ?? "https://app.example.com"
   const url = new URL(`${origin}${opts.pathname}${opts.search ?? ""}`)
   // Real NextURL exposes `basePath` and `clone()`; the stub provides both
-  // so the middleware's basePath-aware redirect path is exercised under test.
+  // so the proxy's basePath-aware redirect path is exercised under test.
   Object.defineProperty(url, "basePath", { value: opts.basePath ?? "", configurable: true })
   Object.defineProperty(url, "clone", {
     value: () => {
@@ -51,18 +51,18 @@ function makeReq(opts: {
   } as const
 }
 
-describe("createMiddleware", () => {
+describe("createProxy", () => {
   it("returns NextResponse.next() for unprotected paths", async () => {
-    const { createMiddleware } = await import("../src/middleware/index.js")
-    const mw = createMiddleware({ protect: ["/admin/:path*"] })
+    const { createProxy } = await import("../src/proxy/index.js")
+    const mw = createProxy({ protect: ["/admin/:path*"] })
     const result = mw(makeReq({ pathname: "/about" }) as unknown as Parameters<typeof mw>[0])
     expect(result).toEqual({ type: "next" })
   })
 
   it("redirects to /sign-in when protected path has no session cookie", async () => {
     redirectCalls.length = 0
-    const { createMiddleware } = await import("../src/middleware/index.js")
-    const mw = createMiddleware({ protect: ["/admin/:path*"] })
+    const { createProxy } = await import("../src/proxy/index.js")
+    const mw = createProxy({ protect: ["/admin/:path*"] })
     const result = mw(makeReq({ pathname: "/admin/users", search: "?q=1" }) as unknown as Parameters<typeof mw>[0])
     expect(result).toMatchObject({ type: "redirect" })
     expect(redirectCalls).toHaveLength(1)
@@ -72,8 +72,8 @@ describe("createMiddleware", () => {
   })
 
   it("passes through when better-auth.session_token cookie is present", async () => {
-    const { createMiddleware } = await import("../src/middleware/index.js")
-    const mw = createMiddleware({ protect: ["/admin/:path*"] })
+    const { createProxy } = await import("../src/proxy/index.js")
+    const mw = createProxy({ protect: ["/admin/:path*"] })
     const result = mw(
       makeReq({
         pathname: "/admin/users",
@@ -84,8 +84,8 @@ describe("createMiddleware", () => {
   })
 
   it("recognizes the __Secure- prefixed cookie variant", async () => {
-    const { createMiddleware } = await import("../src/middleware/index.js")
-    const mw = createMiddleware({ protect: ["/admin/:path*"] })
+    const { createProxy } = await import("../src/proxy/index.js")
+    const mw = createProxy({ protect: ["/admin/:path*"] })
     const result = mw(
       makeReq({
         pathname: "/admin/users",
@@ -96,8 +96,8 @@ describe("createMiddleware", () => {
   })
 
   it("respects a custom cookiePrefix", async () => {
-    const { createMiddleware } = await import("../src/middleware/index.js")
-    const mw = createMiddleware({ protect: ["/admin/:path*"], cookiePrefix: "my-app" })
+    const { createProxy } = await import("../src/proxy/index.js")
+    const mw = createProxy({ protect: ["/admin/:path*"], cookiePrefix: "my-app" })
     const noCookie = mw(makeReq({ pathname: "/admin/x" }) as unknown as Parameters<typeof mw>[0])
     expect(noCookie).toMatchObject({ type: "redirect" })
     const withCookie = mw(
@@ -111,8 +111,8 @@ describe("createMiddleware", () => {
 
   it("uses custom signInPath and callbackParam", async () => {
     redirectCalls.length = 0
-    const { createMiddleware } = await import("../src/middleware/index.js")
-    const mw = createMiddleware({
+    const { createProxy } = await import("../src/proxy/index.js")
+    const mw = createProxy({
       protect: ["/admin/:path*"],
       signInPath: "/login",
       callbackParam: "next",
@@ -123,15 +123,15 @@ describe("createMiddleware", () => {
   })
 
   it("matches nested segments via :path*", async () => {
-    const { createMiddleware } = await import("../src/middleware/index.js")
-    const mw = createMiddleware({ protect: ["/admin/:path*"] })
+    const { createProxy } = await import("../src/proxy/index.js")
+    const mw = createProxy({ protect: ["/admin/:path*"] })
     const result = mw(makeReq({ pathname: "/admin/a/b/c/d" }) as unknown as Parameters<typeof mw>[0])
     expect(result).toMatchObject({ type: "redirect" })
   })
 
   it("matches if ANY protect pattern matches", async () => {
-    const { createMiddleware } = await import("../src/middleware/index.js")
-    const mw = createMiddleware({ protect: ["/admin/:path*", "/dashboard/:path*"] })
+    const { createProxy } = await import("../src/proxy/index.js")
+    const mw = createProxy({ protect: ["/admin/:path*", "/dashboard/:path*"] })
     expect(
       mw(makeReq({ pathname: "/dashboard/billing" }) as unknown as Parameters<typeof mw>[0]),
     ).toMatchObject({ type: "redirect" })
@@ -141,16 +141,16 @@ describe("createMiddleware", () => {
   })
 
   it("treats /admin (no trailing segments) as a match for /admin/:path*", async () => {
-    const { createMiddleware } = await import("../src/middleware/index.js")
-    const mw = createMiddleware({ protect: ["/admin/:path*"] })
+    const { createProxy } = await import("../src/proxy/index.js")
+    const mw = createProxy({ protect: ["/admin/:path*"] })
     // :path* should allow zero-segment match — `/admin` redirects.
     const result = mw(makeReq({ pathname: "/admin" }) as unknown as Parameters<typeof mw>[0])
     expect(result).toMatchObject({ type: "redirect" })
   })
 
   it("matches mid-pattern :name* with zero segments (/admin/:path*/edit ↔ /admin/edit)", async () => {
-    const { createMiddleware } = await import("../src/middleware/index.js")
-    const mw = createMiddleware({ protect: ["/admin/:path*/edit"] })
+    const { createProxy } = await import("../src/proxy/index.js")
+    const mw = createProxy({ protect: ["/admin/:path*/edit"] })
     expect(mw(makeReq({ pathname: "/admin/edit" }) as unknown as Parameters<typeof mw>[0])).toMatchObject({ type: "redirect" })
     expect(mw(makeReq({ pathname: "/admin/users/edit" }) as unknown as Parameters<typeof mw>[0])).toMatchObject({ type: "redirect" })
     expect(mw(makeReq({ pathname: "/admin/a/b/edit" }) as unknown as Parameters<typeof mw>[0])).toMatchObject({ type: "redirect" })
@@ -158,8 +158,8 @@ describe("createMiddleware", () => {
   })
 
   it("matches /** with zero or more segments", async () => {
-    const { createMiddleware } = await import("../src/middleware/index.js")
-    const mw = createMiddleware({ protect: ["/admin/**"] })
+    const { createProxy } = await import("../src/proxy/index.js")
+    const mw = createProxy({ protect: ["/admin/**"] })
     expect(mw(makeReq({ pathname: "/admin" }) as unknown as Parameters<typeof mw>[0])).toMatchObject({ type: "redirect" })
     expect(mw(makeReq({ pathname: "/admin/users" }) as unknown as Parameters<typeof mw>[0])).toMatchObject({ type: "redirect" })
     expect(mw(makeReq({ pathname: "/admin/a/b/c" }) as unknown as Parameters<typeof mw>[0])).toMatchObject({ type: "redirect" })
@@ -167,21 +167,21 @@ describe("createMiddleware", () => {
   })
 
   it("throws if protect is empty", async () => {
-    const { createMiddleware } = await import("../src/middleware/index.js")
-    expect(() => createMiddleware({ protect: [] })).toThrow(/'protect' must be a non-empty array/)
+    const { createProxy } = await import("../src/proxy/index.js")
+    expect(() => createProxy({ protect: [] })).toThrow(/'protect' must be a non-empty array/)
   })
 
   // The construction-time guard is the real fix for the redirect-loop class
   // of bug — it surfaces misconfigurations at module load instead of letting
   // the loop manifest as ERR_TOO_MANY_REDIRECTS in the browser.
   it("throws at construction when a protect pattern matches the default signInPath", async () => {
-    const { createMiddleware } = await import("../src/middleware/index.js")
-    expect(() => createMiddleware({ protect: ["/**"] })).toThrow(/infinite redirect loop/)
+    const { createProxy } = await import("../src/proxy/index.js")
+    expect(() => createProxy({ protect: ["/**"] })).toThrow(/infinite redirect loop/)
   })
 
   it("throws at construction when a protect pattern matches a custom signInPath", async () => {
-    const { createMiddleware } = await import("../src/middleware/index.js")
-    expect(() => createMiddleware({ protect: ["/login", "/admin/**"], signInPath: "/login" })).toThrow(
+    const { createProxy } = await import("../src/proxy/index.js")
+    expect(() => createProxy({ protect: ["/login", "/admin/**"], signInPath: "/login" })).toThrow(
       /infinite redirect loop/,
     )
   })
@@ -193,16 +193,16 @@ describe("createMiddleware", () => {
   // the trailingSlash:true /sign-in/ case. The earlier boot guard
   // rejected this as a false positive; the narrowed guard accepts it.
   it("does NOT throw when protect uses `/sign-in/*` (matches sub-paths, not bare signInPath)", async () => {
-    const { createMiddleware } = await import("../src/middleware/index.js")
-    expect(() => createMiddleware({ protect: ["/sign-in/*"] })).not.toThrow()
+    const { createProxy } = await import("../src/proxy/index.js")
+    expect(() => createProxy({ protect: ["/sign-in/*"] })).not.toThrow()
   })
 
   // Defense-in-depth: even if a consumer rewrite layer hands us a
   // trailing-slash pathname at request time (without it being declared in
   // `protect`), the runtime short-circuit still passes through.
   it("passes through requests to signInPath with a trailing slash", async () => {
-    const { createMiddleware } = await import("../src/middleware/index.js")
-    const mw = createMiddleware({ protect: ["/admin/:path*"] })
+    const { createProxy } = await import("../src/proxy/index.js")
+    const mw = createProxy({ protect: ["/admin/:path*"] })
     expect(mw(makeReq({ pathname: "/sign-in/" }) as unknown as Parameters<typeof mw>[0])).toEqual({ type: "next" })
   })
 
@@ -212,13 +212,13 @@ describe("createMiddleware", () => {
   // that matches nothing, so the `protect` pattern would let
   // unauthenticated traffic past. Refuse loudly at construction instead.
   it("throws at construction on unsupported `:name?` modifier", async () => {
-    const { createMiddleware } = await import("../src/middleware/index.js")
-    expect(() => createMiddleware({ protect: ["/admin/:path?"] })).toThrow(/unsupported modifier/)
+    const { createProxy } = await import("../src/proxy/index.js")
+    expect(() => createProxy({ protect: ["/admin/:path?"] })).toThrow(/unsupported modifier/)
   })
 
   it("throws at construction on unsupported `:name+` modifier", async () => {
-    const { createMiddleware } = await import("../src/middleware/index.js")
-    expect(() => createMiddleware({ protect: ["/admin/:path+"] })).toThrow(/unsupported modifier/)
+    const { createProxy } = await import("../src/proxy/index.js")
+    expect(() => createProxy({ protect: ["/admin/:path+"] })).toThrow(/unsupported modifier/)
   })
 
   // Same auth-bypass class as the `:name?` case above but via the glob
@@ -229,28 +229,28 @@ describe("createMiddleware", () => {
   // that matches no real pathname, so `/admin/...` requests would silently
   // bypass `protect`.
   it("throws at construction on `**?` (glob + ? modifier)", async () => {
-    const { createMiddleware } = await import("../src/middleware/index.js")
-    expect(() => createMiddleware({ protect: ["/admin/**?"] })).toThrow(/unsupported modifier/)
+    const { createProxy } = await import("../src/proxy/index.js")
+    expect(() => createProxy({ protect: ["/admin/**?"] })).toThrow(/unsupported modifier/)
   })
   it("throws at construction on `**+` (glob + + modifier)", async () => {
-    const { createMiddleware } = await import("../src/middleware/index.js")
-    expect(() => createMiddleware({ protect: ["/admin/**+"] })).toThrow(/unsupported modifier/)
+    const { createProxy } = await import("../src/proxy/index.js")
+    expect(() => createProxy({ protect: ["/admin/**+"] })).toThrow(/unsupported modifier/)
   })
   it("throws at construction on `*?` (single glob + ? modifier)", async () => {
-    const { createMiddleware } = await import("../src/middleware/index.js")
-    expect(() => createMiddleware({ protect: ["/admin/*?"] })).toThrow(/unsupported modifier/)
+    const { createProxy } = await import("../src/proxy/index.js")
+    expect(() => createProxy({ protect: ["/admin/*?"] })).toThrow(/unsupported modifier/)
   })
   it("throws at construction on `*+` (single glob + + modifier)", async () => {
-    const { createMiddleware } = await import("../src/middleware/index.js")
-    expect(() => createMiddleware({ protect: ["/admin/*+"] })).toThrow(/unsupported modifier/)
+    const { createProxy } = await import("../src/proxy/index.js")
+    expect(() => createProxy({ protect: ["/admin/*+"] })).toThrow(/unsupported modifier/)
   })
   it("throws at construction on `:name*?` (named glob + ? modifier)", async () => {
-    const { createMiddleware } = await import("../src/middleware/index.js")
-    expect(() => createMiddleware({ protect: ["/admin/:path*?"] })).toThrow(/unsupported modifier/)
+    const { createProxy } = await import("../src/proxy/index.js")
+    expect(() => createProxy({ protect: ["/admin/:path*?"] })).toThrow(/unsupported modifier/)
   })
   it("throws at construction on `:name*+` (named glob + + modifier)", async () => {
-    const { createMiddleware } = await import("../src/middleware/index.js")
-    expect(() => createMiddleware({ protect: ["/admin/:path*+"] })).toThrow(/unsupported modifier/)
+    const { createProxy } = await import("../src/proxy/index.js")
+    expect(() => createProxy({ protect: ["/admin/:path*+"] })).toThrow(/unsupported modifier/)
   })
 
   // basePath: under `next.config.js: { basePath: '/app' }`, the request
@@ -260,8 +260,8 @@ describe("createMiddleware", () => {
   // callbackUrl so the post-sign-in roundtrip lands at the right URL.
   it("preserves nextUrl.basePath in redirect target and callbackUrl", async () => {
     redirectCalls.length = 0
-    const { createMiddleware } = await import("../src/middleware/index.js")
-    const mw = createMiddleware({ protect: ["/admin/:path*"] })
+    const { createProxy } = await import("../src/proxy/index.js")
+    const mw = createProxy({ protect: ["/admin/:path*"] })
     mw(
       makeReq({
         pathname: "/admin/users",
@@ -272,5 +272,22 @@ describe("createMiddleware", () => {
     expect(redirectCalls).toHaveLength(1)
     expect(redirectCalls[0]!.pathname).toBe("/app/sign-in")
     expect(redirectCalls[0]!.searchParams.get("callbackUrl")).toBe("/app/admin/users?q=1")
+  })
+
+  // 0.5.0: getSessionCookie is re-exported from the proxy module so
+  // consumers writing a custom proxy (host canon, geo gating, A/B routing)
+  // don't have to reach past `@naeemba/next-starter` into the better-auth
+  // internal surface to do the cheap cookie-presence check.
+  it("re-exports getSessionCookie from better-auth/cookies", async () => {
+    const mod = await import("../src/proxy/index.js")
+    expect(typeof mod.getSessionCookie).toBe("function")
+  })
+
+  // 0.5.0: proxy-only. Next 16 is the floor, so createMiddleware was
+  // dropped — only createProxy ships. Pin this so a re-introduction is
+  // a deliberate decision, not an accidental alias revival.
+  it("does NOT export createMiddleware (proxy-only since Next 16)", async () => {
+    const mod = await import("../src/proxy/index.js")
+    expect((mod as Record<string, unknown>).createMiddleware).toBeUndefined()
   })
 })

@@ -349,4 +349,247 @@ describe("next-starter init", () => {
     const { stdout } = runCli(["init", dir, "--no-passkey"])
     expect(stdout).not.toMatch(/@better-auth\/passkey/)
   })
+
+  // 0.5.0 — consumer-owned file safety.
+  //
+  // Regression: under 0.4.0, `init --force` overwrote db/schema.ts wholesale,
+  // destroying any consumer-defined tables (blog_posts, inquiries, ...). The
+  // re-export line is the only thing the CLI owns in that file; the rest is
+  // the consumer's surface. New behavior: classify db/schema.ts as
+  // "schema-merge" — if the re-export is missing, PREPEND it; otherwise
+  // leave the file alone. --force does NOT replace this file.
+  describe("db/schema.ts is consumer-owned (merge, not overwrite)", () => {
+    it("prepends the re-export line when the consumer's schema is missing it", () => {
+      const existing =
+        `import { pgTable, serial, text } from "drizzle-orm/pg-core"\n\n` +
+        `export const blogPosts = pgTable("blog_posts", {\n` +
+        `  id: serial("id").primaryKey(),\n` +
+        `  title: text("title").notNull(),\n` +
+        `})\n`
+      mkdirSync(join(dir, "db"), { recursive: true })
+      writeFileSync(join(dir, "db/schema.ts"), existing)
+      const { code, stdout } = runCli(["init", dir, "--no-src"])
+      expect(code).toBe(0)
+      const merged = readFileSync(join(dir, "db/schema.ts"), "utf8")
+      // The re-export line is now present
+      expect(merged).toMatch(/@naeemba\/next-starter\/schema/)
+      expect(merged).toMatch(/user, session, account, verification/)
+      // The consumer's table is still there
+      expect(merged).toMatch(/export const blogPosts = pgTable/)
+      expect(merged).toMatch(/blog_posts/)
+      // And the output flagged the merge, not a destructive overwrite
+      expect(stdout).toMatch(/db\/schema\.ts.*merged/)
+      expect(stdout).not.toMatch(/db\/schema\.ts.*overwritten/)
+    })
+
+    it("leaves an idempotent re-run alone when the re-export is already present", () => {
+      const existing =
+        `export { user, session, account, verification, passkey } from "@naeemba/next-starter/schema"\n\n` +
+        `import { pgTable, serial, text } from "drizzle-orm/pg-core"\n` +
+        `export const blogPosts = pgTable("blog_posts", {\n` +
+        `  id: serial("id").primaryKey(),\n` +
+        `  title: text("title").notNull(),\n` +
+        `})\n`
+      mkdirSync(join(dir, "db"), { recursive: true })
+      writeFileSync(join(dir, "db/schema.ts"), existing)
+      const before = readFileSync(join(dir, "db/schema.ts"), "utf8")
+      runCli(["init", dir, "--no-src"])
+      const after = readFileSync(join(dir, "db/schema.ts"), "utf8")
+      expect(after).toBe(before)
+    })
+
+    // The critical safety property: --force is for starter-owned shims only.
+    // db/schema.ts is consumer-owned regardless of the flag — destroying
+    // table definitions to "force-refresh" a one-line re-export is never
+    // the right call.
+    it("does NOT overwrite the consumer's schema even with --force", () => {
+      const existing =
+        `import { pgTable, serial, text } from "drizzle-orm/pg-core"\n` +
+        `export const blogPosts = pgTable("blog_posts", { id: serial("id").primaryKey() })\n`
+      mkdirSync(join(dir, "db"), { recursive: true })
+      writeFileSync(join(dir, "db/schema.ts"), existing)
+      runCli(["init", dir, "--no-src", "--force"])
+      const after = readFileSync(join(dir, "db/schema.ts"), "utf8")
+      expect(after).toMatch(/export const blogPosts = pgTable/)
+      expect(after).toMatch(/@naeemba\/next-starter\/schema/)
+    })
+
+    // When no existing schema file, scaffold the one-line shim. This is
+    // the path the docs show consumers without a db/schema.ts file yet.
+    it("scaffolds the one-line shim when no db/schema.ts exists", () => {
+      runCli(["init", dir, "--no-src"])
+      const schema = readFileSync(join(dir, "db/schema.ts"), "utf8")
+      expect(schema).toMatch(/export \{[^}]*\} from "@naeemba\/next-starter\/schema"/)
+    })
+  })
+
+  // 0.5.0 — drizzle.config.ts is consumer-owned (e.g. verbose, casing,
+  // schemaFilter customizations). Never overwrite, even with --force.
+  describe("drizzle.config.ts is consumer-owned (preserved)", () => {
+    it("preserves an existing drizzle.config.ts even with --force", () => {
+      const custom =
+        `import { defineConfig } from "drizzle-kit"\n` +
+        `export default defineConfig({\n` +
+        `  schema: "./db/schema.ts",\n` +
+        `  out: "./drizzle",\n` +
+        `  dialect: "postgresql",\n` +
+        `  verbose: true,\n` +
+        `  strict: true,\n` +
+        `  dbCredentials: { url: process.env.DATABASE_URL! },\n` +
+        `})\n`
+      writeFileSync(join(dir, "drizzle.config.ts"), custom)
+      const { stdout } = runCli(["init", dir, "--no-src", "--force"])
+      const after = readFileSync(join(dir, "drizzle.config.ts"), "utf8")
+      expect(after).toBe(custom)
+      expect(stdout).toMatch(/drizzle\.config\.ts.*consumer-owned/)
+    })
+
+    // When no drizzle.config.ts exists, scaffold the env-loading template.
+    // The template must load env files so `pnpm db:push` works locally
+    // without a separate manual dotenv install.
+    it("scaffolds drizzle.config.ts with @next/env loading when none exists", () => {
+      runCli(["init", dir, "--no-src"])
+      const cfg = readFileSync(join(dir, "drizzle.config.ts"), "utf8")
+      expect(cfg).toMatch(/loadEnvConfig/)
+      expect(cfg).toMatch(/from "@next\/env"/)
+      // Non-null assertion satisfies TS — process.env.DATABASE_URL is string | undefined
+      expect(cfg).toMatch(/process\.env\.DATABASE_URL!/)
+    })
+  })
+
+  // 0.5.0 — when the consumer already has a `db/index.ts` exporting `db`,
+  // wire it into createAuth({ db }) instead of letting the lazy proxy
+  // spin up a second postgres pool to the same database.
+  describe("detects existing db/index.ts and wires it into createAuth", () => {
+    it("generates lib/auth.ts with `import { db } from '@/db'` when db/index.ts exports db", () => {
+      mkdirSync(join(dir, "db"), { recursive: true })
+      writeFileSync(
+        join(dir, "db/index.ts"),
+        `import { drizzle } from "drizzle-orm/postgres-js"\n` +
+          `import postgres from "postgres"\n` +
+          `const queryClient = postgres(process.env.DATABASE_URL!)\n` +
+          `export const db = drizzle(queryClient)\n`,
+      )
+      const { stdout } = runCli(["init", dir, "--no-src"])
+      const authFile = readFileSync(join(dir, "lib/auth.ts"), "utf8")
+      expect(authFile).toMatch(/import \{ db \} from "@\/db"/)
+      expect(authFile).toMatch(/createAuth\(\{[\s\S]*\bdb,[\s\S]*\}\)/)
+      expect(stdout).toMatch(/Detected.*db\/index\.ts.*createAuth/s)
+    })
+
+    it("matches `export { db }` named re-exports", () => {
+      mkdirSync(join(dir, "db"), { recursive: true })
+      writeFileSync(
+        join(dir, "db/index.ts"),
+        `import { drizzle } from "drizzle-orm/postgres-js"\n` +
+          `const _db = drizzle(process.env.DATABASE_URL!)\n` +
+          `export { _db as db }\n`,
+      )
+      runCli(["init", dir, "--no-src"])
+      const authFile = readFileSync(join(dir, "lib/auth.ts"), "utf8")
+      expect(authFile).toMatch(/import \{ db \} from "@\/db"/)
+    })
+
+    it("falls back to the no-db template when db/index.ts is absent", () => {
+      runCli(["init", dir, "--no-src"])
+      const authFile = readFileSync(join(dir, "lib/auth.ts"), "utf8")
+      expect(authFile).not.toMatch(/import \{ db \} from/)
+    })
+
+    it("falls back to the no-db template when db/index.ts exists but doesn't export `db`", () => {
+      mkdirSync(join(dir, "db"), { recursive: true })
+      writeFileSync(
+        join(dir, "db/index.ts"),
+        `import { drizzle } from "drizzle-orm/postgres-js"\n` +
+          `export const queryClient = drizzle(process.env.DATABASE_URL!)\n`,
+      )
+      runCli(["init", dir, "--no-src"])
+      const authFile = readFileSync(join(dir, "lib/auth.ts"), "utf8")
+      expect(authFile).not.toMatch(/import \{ db \} from/)
+    })
+
+    // Under src/ layout, the import alias still resolves to "@/db" — the
+    // `@/*` alias maps to `src/*`, so `@/db` is `src/db/index.ts`.
+    it("detects src/db/index.ts under src/ layout", () => {
+      mkdirSync(join(dir, "src/db"), { recursive: true })
+      writeFileSync(
+        join(dir, "src/db/index.ts"),
+        `import { drizzle } from "drizzle-orm/postgres-js"\n` +
+          `export const db = drizzle(process.env.DATABASE_URL!)\n`,
+      )
+      runCli(["init", dir, "--src"])
+      const authFile = readFileSync(join(dir, "src/lib/auth.ts"), "utf8")
+      expect(authFile).toMatch(/import \{ db \} from "@\/db"/)
+    })
+  })
+
+  // 0.5.0 — the old README told consumers to add an `auth:generate` script.
+  // That script is now dead code (schema ships from
+  // @naeemba/next-starter/schema). Detect and report; opt-in remove via
+  // --clean-scripts so the CLI never mutates package.json by surprise.
+  describe("obsolete package.json scripts", () => {
+    it("warns about `auth:generate` scripts that run `better-auth generate`", () => {
+      writeFileSync(
+        join(dir, "package.json"),
+        JSON.stringify(
+          {
+            name: "test-app",
+            scripts: {
+              dev: "next dev",
+              "auth:generate": "better-auth generate --output db/auth-schema.ts",
+            },
+          },
+          null,
+          2,
+        ) + "\n",
+      )
+      const { stdout } = runCli(["init", dir, "--no-src"])
+      expect(stdout).toMatch(/obsolete package\.json script/)
+      expect(stdout).toMatch(/auth:generate/)
+      expect(stdout).toMatch(/--clean-scripts/)
+      // Without --clean-scripts, package.json is left alone
+      const pkg = JSON.parse(readFileSync(join(dir, "package.json"), "utf8"))
+      expect(pkg.scripts["auth:generate"]).toBeDefined()
+    })
+
+    it("removes obsolete scripts under --clean-scripts", () => {
+      writeFileSync(
+        join(dir, "package.json"),
+        JSON.stringify(
+          {
+            name: "test-app",
+            scripts: {
+              dev: "next dev",
+              "auth:generate": "better-auth generate --output db/auth-schema.ts",
+              build: "next build",
+            },
+          },
+          null,
+          2,
+        ) + "\n",
+      )
+      const { stdout } = runCli(["init", dir, "--no-src", "--clean-scripts"])
+      expect(stdout).toMatch(/removed obsolete script/)
+      const pkg = JSON.parse(readFileSync(join(dir, "package.json"), "utf8"))
+      expect(pkg.scripts["auth:generate"]).toBeUndefined()
+      // Untouched scripts survive
+      expect(pkg.scripts.dev).toBe("next dev")
+      expect(pkg.scripts.build).toBe("next build")
+    })
+
+    it("doesn't warn when no obsolete scripts are present", () => {
+      writeFileSync(
+        join(dir, "package.json"),
+        JSON.stringify({ name: "test-app", scripts: { dev: "next dev" } }, null, 2) + "\n",
+      )
+      const { stdout } = runCli(["init", dir, "--no-src"])
+      expect(stdout).not.toMatch(/obsolete package\.json script/)
+    })
+
+    it("doesn't crash when package.json is absent", () => {
+      const { code, stdout } = runCli(["init", dir, "--no-src"])
+      expect(code).toBe(0)
+      expect(stdout).not.toMatch(/obsolete package\.json script/)
+    })
+  })
 })

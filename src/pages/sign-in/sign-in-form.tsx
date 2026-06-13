@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, type ReactNode, type FormEvent } from "react"
+import { useState, type CSSProperties, type ReactNode, type FormEvent } from "react"
 import {
   useWebAuthnSupported,
   type MagicLinkAuthClient as MagicLinkClientShape,
@@ -26,6 +26,37 @@ export interface SignInAuthClient {
   }
 }
 
+/**
+ * Per-element className overrides. When a key is set, the corresponding
+ * inline-style default is suppressed for that element — your CSS / Tailwind
+ * layer becomes the single source of truth for that element's appearance.
+ * Unset keys keep the built-in inline defaults so you can override just
+ * the parts you care about.
+ *
+ * If you'd rather start from a blank canvas, copy `app/sign-in/page.tsx`
+ * (and call `authClient.signIn.magicLink` / `social` / `passkey` directly)
+ * — the shipped form is intentionally minimal.
+ */
+export interface SignInFormClassNames {
+  /** Wrapper `<div>`. Composes with the legacy `className` prop. */
+  root?: string
+  googleButton?: string
+  passkeyButton?: string
+  /** The flex container holding the divider lines + label. */
+  divider?: string
+  /** The two horizontal lines that frame the divider label. */
+  dividerLine?: string
+  /** The label text in the middle of the divider. */
+  dividerLabel?: string
+  emailLabel?: string
+  emailInput?: string
+  submitButton?: string
+  /** The `<p>` rendered for each method's error state. */
+  error?: string
+  /** The `<p>` rendered after a successful magic-link send. */
+  sentMessage?: string
+}
+
 export interface SignInFormProps {
   authClient: SignInAuthClient
   callbackUrl?: string
@@ -47,11 +78,28 @@ export interface SignInFormProps {
   sentCopy?: (email: string) => ReactNode
   errorCopy?: (message: string) => ReactNode
   onSent?: (email: string) => void
+  /** Legacy single-className for the root `<div>`. Still composes with `classNames.root`. */
   className?: string
+  /** Per-element className overrides; replaces the inline-style default for any element you provide. */
+  classNames?: SignInFormClassNames
 }
 
 type Status = "idle" | "sending" | "sent" | "error"
 type MethodStatus = { magicLink: Status; google: Status; passkey: Status }
+
+// When a per-element className is provided, drop the inline style entirely
+// — your CSS becomes the single source of truth. Without this swap, inline
+// `style` would beat any rule from a Tailwind utility / external stylesheet
+// short of `!important`, which is the exact mismatch the classNames prop
+// is meant to eliminate.
+function styled(className: string | undefined, fallback: CSSProperties): { className?: string; style?: CSSProperties } {
+  return className ? { className } : { style: fallback }
+}
+
+function joinClassNames(...parts: Array<string | undefined>): string | undefined {
+  const filtered = parts.filter((p): p is string => Boolean(p))
+  return filtered.length === 0 ? undefined : filtered.join(" ")
+}
 
 export function SignInForm(props: SignInFormProps) {
   const {
@@ -72,6 +120,7 @@ export function SignInForm(props: SignInFormProps) {
     errorCopy = (message) => <>Couldn't sign in: {message}</>,
     onSent,
     className,
+    classNames,
   } = props
 
   const [email, setEmail] = useState("")
@@ -149,20 +198,23 @@ export function SignInForm(props: SignInFormProps) {
   const passkeyLabel =
     typeof passkey === "object" && passkey.label ? passkey.label : "Sign in with passkey"
 
+  const errorStyle: CSSProperties = { color: "#b00", marginTop: 4, marginBottom: 8, fontSize: 13 }
+  const magicLinkErrorStyle: CSSProperties = { color: "#b00", marginTop: 8, fontSize: 13 }
+
   return (
-    <div className={className}>
+    <div className={joinClassNames(className, classNames?.root)}>
       {showGoogle && (
         <>
           <button
             type="button"
             onClick={onGoogleClick}
             disabled={status.google === "sending"}
-            style={{ padding: "8px 12px", width: "100%", marginBottom: 8 }}
+            {...styled(classNames?.googleButton, { padding: "8px 12px", width: "100%", marginBottom: 8 })}
           >
             {status.google === "sending" ? "Signing in…" : googleLabel}
           </button>
           {status.google === "error" && (
-            <p style={{ color: "#b00", marginTop: 4, marginBottom: 8, fontSize: 13 }}>
+            <p {...styled(classNames?.error, errorStyle)}>
               {errorCopy(errors.google)}
             </p>
           )}
@@ -175,12 +227,12 @@ export function SignInForm(props: SignInFormProps) {
             type="button"
             onClick={onPasskeyClick}
             disabled={status.passkey === "sending"}
-            style={{ padding: "8px 12px", width: "100%", marginBottom: 8 }}
+            {...styled(classNames?.passkeyButton, { padding: "8px 12px", width: "100%", marginBottom: 8 })}
           >
             {status.passkey === "sending" ? "Signing in…" : passkeyLabel}
           </button>
           {status.passkey === "error" && (
-            <p style={{ color: "#b00", marginTop: 4, marginBottom: 8, fontSize: 13 }}>
+            <p {...styled(classNames?.error, errorStyle)}>
               {errorCopy(errors.passkey)}
             </p>
           )}
@@ -188,10 +240,10 @@ export function SignInForm(props: SignInFormProps) {
       )}
 
       {showDivider && (
-        <div style={{ display: "flex", alignItems: "center", margin: "12px 0", gap: 8, fontSize: 13, color: "#888" }}>
-          <span style={{ flex: 1, height: 1, background: "#ddd" }} />
-          <span>{dividerLabel}</span>
-          <span style={{ flex: 1, height: 1, background: "#ddd" }} />
+        <div {...styled(classNames?.divider, { display: "flex", alignItems: "center", margin: "12px 0", gap: 8, fontSize: 13, color: "#888" })}>
+          <span {...styled(classNames?.dividerLine, { flex: 1, height: 1, background: "#ddd" })} />
+          <span className={classNames?.dividerLabel}>{dividerLabel}</span>
+          <span {...styled(classNames?.dividerLine, { flex: 1, height: 1, background: "#ddd" })} />
         </div>
       )}
 
@@ -201,10 +253,13 @@ export function SignInForm(props: SignInFormProps) {
           // whole component. Early-returning unmounts the Google/passkey
           // buttons and drops any in-flight status updates from those
           // methods — defeating the per-method MethodStatus isolation.
-          <p>{sentCopy(email)}</p>
+          <p className={classNames?.sentMessage}>{sentCopy(email)}</p>
         ) : (
           <form onSubmit={onMagicLinkSubmit}>
-            <label htmlFor="email" style={{ display: "block", fontSize: 13, marginBottom: 6 }}>
+            <label
+              htmlFor="email"
+              {...styled(classNames?.emailLabel, { display: "block", fontSize: 13, marginBottom: 6 })}
+            >
               {emailLabel}
             </label>
             <input
@@ -214,13 +269,17 @@ export function SignInForm(props: SignInFormProps) {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               disabled={status.magicLink === "sending"}
-              style={{ width: "100%", padding: 8, marginBottom: 8 }}
+              {...styled(classNames?.emailInput, { width: "100%", padding: 8, marginBottom: 8 })}
             />
-            <button type="submit" disabled={status.magicLink === "sending"} style={{ padding: "8px 12px" }}>
+            <button
+              type="submit"
+              disabled={status.magicLink === "sending"}
+              {...styled(classNames?.submitButton, { padding: "8px 12px" })}
+            >
               {status.magicLink === "sending" ? "Sending…" : submitLabel}
             </button>
             {status.magicLink === "error" && (
-              <p style={{ color: "#b00", marginTop: 8, fontSize: 13 }}>
+              <p {...styled(classNames?.error, magicLinkErrorStyle)}>
                 {errorCopy(errors.magicLink)}
               </p>
             )}
