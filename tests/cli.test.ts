@@ -42,7 +42,11 @@ describe("next-starter init", () => {
 
     const authFile = readFileSync(join(dir, "lib/auth.ts"), "utf8")
     expect(authFile).toMatch(/from "@naeemba\/next-starter\/auth"/)
-    expect(authFile).toMatch(/createAuth\(/)
+    // Lock the 0.7.0 contract: `auth` must be `await createAuth(...)`, not
+    // a bare `createAuth(...)` Promise. A bare `/createAuth\(/` would have
+    // green-lit a regression that silently shipped `auth: Promise<Auth>` to
+    // downstream `createAuthRoute(auth)` / `createServer(auth)`.
+    expect(authFile).toMatch(/export const auth = await createAuth\(/)
 
     const authClient = readFileSync(join(dir, "lib/auth-client.ts"), "utf8")
     expect(authClient).toMatch(/from "@naeemba\/next-starter\/client"/)
