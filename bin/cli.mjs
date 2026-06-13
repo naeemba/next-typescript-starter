@@ -212,8 +212,16 @@ async function hasNamedDbExport(target, prefix) {
   try {
     const content = await readFile(candidate, "utf8")
     if (/\bexport\s+(const|let|var|function|async\s+function)\s+db\b/.test(content)) return true
-    if (/\bexport\s*\{[^}]*\bdb\s*[,}]/.test(content)) return true
-    if (/\bexport\s*\{[^}]*\bas\s+db\s*[,}]/.test(content)) return true
+    // Exclude inline-type-only re-exports: `export { type db }` and
+    // `export { ... as db }` where `as db` is preceded by `type` (e.g.
+    // `export { type Database as db }`). Both erase at runtime, so the
+    // generated `import { db } from "@/db"` would resolve to undefined
+    // and silently break the wired-db path (createAuth({ db }) would
+    // crash inside better-auth or silently disable the wired-db code).
+    // The `\bexport\s*\{` head already filters `export type { ... }`
+    // form since `type` would have to sit between `export` and `{`.
+    if (/\bexport\s*\{(?![^}]*\btype\s+db\b)(?![^}]*\btype\s+\w+\s+as\s+db\b)[^}]*\bdb\s*[,}]/.test(content)) return true
+    if (/\bexport\s*\{(?![^}]*\btype\s+\w+\s+as\s+db\b)[^}]*\bas\s+db\s*[,}]/.test(content)) return true
     return false
   } catch {
     return false

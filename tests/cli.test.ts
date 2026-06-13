@@ -508,6 +508,33 @@ describe("next-starter init", () => {
       expect(authFile).not.toMatch(/import \{ db \} from/)
     })
 
+    // Type-only re-exports erase at runtime — `import { db }` would
+    // resolve to undefined and silently break the wired-db path. The
+    // detector must NOT treat `export { type db }` or
+    // `export { type Database as db }` as a runtime value export.
+    it("ignores inline type-only `export { type Database as db }` re-export", () => {
+      mkdirSync(join(dir, "db"), { recursive: true })
+      writeFileSync(
+        join(dir, "db/index.ts"),
+        `import type { Database } from "drizzle-orm"\n` +
+          `export { type Database as db } from "./types"\n`,
+      )
+      runCli(["init", dir, "--no-src"])
+      const authFile = readFileSync(join(dir, "lib/auth.ts"), "utf8")
+      expect(authFile).not.toMatch(/import \{ db \} from/)
+    })
+
+    it("ignores `export { type db } from \"./drizzle\"` re-export", () => {
+      mkdirSync(join(dir, "db"), { recursive: true })
+      writeFileSync(
+        join(dir, "db/index.ts"),
+        `export { type db } from "./drizzle"\n`,
+      )
+      runCli(["init", dir, "--no-src"])
+      const authFile = readFileSync(join(dir, "lib/auth.ts"), "utf8")
+      expect(authFile).not.toMatch(/import \{ db \} from/)
+    })
+
     // Under src/ layout, the import alias still resolves to "@/db" — the
     // `@/*` alias maps to `src/*`, so `@/db` is `src/db/index.ts`.
     it("detects src/db/index.ts under src/ layout", () => {
