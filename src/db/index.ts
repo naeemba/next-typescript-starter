@@ -31,7 +31,7 @@ export function createDb(databaseUrl: string, opts: CreateDbOptions = {}): Db {
       "[@naeemba/next-starter] createDb requires a non-empty DATABASE_URL connection string."
     )
   }
-  const pg = loadOptionalPeer<typeof postgres>("postgres", "createDb / DATABASE_URL")
+  const pg = loadOptionalPeer<typeof postgres>("postgres", "the createDb client (DATABASE_URL)")
   const client = pg(databaseUrl, {
     prepare: opts.prepare ?? true,
     max: opts.max ?? 10,

@@ -11,11 +11,29 @@ const packageRequire = createRequire(import.meta.url)
 // that breaks Node's module resolution, so peer lookups from the bundled
 // chunk miss the consumer's node_modules. process.cwd() always points at
 // the consumer's project root in that context.
-const cwdRequire = createRequire(pathToFileURL(process.cwd() + "/").href)
+//
+// `pathToFileURL(process.cwd()).href + "/"` (URL spec is forward-slash
+// even on Windows) rather than `pathToFileURL(process.cwd() + "/").href`,
+// which on Windows would produce a mixed-separator input like
+// `C:\Users\foo/` and round-trip to a malformed `file:///` URL.
+const cwdRequire = createRequire(pathToFileURL(process.cwd()).href + "/")
 
 function isModuleNotFound(err: unknown): boolean {
   const code = (err as NodeJS.ErrnoException).code
   return code === "MODULE_NOT_FOUND" || code === "ERR_MODULE_NOT_FOUND"
+}
+
+// Distinct from "not installed": the peer IS reachable but cannot be
+// loaded via the path we tried. ERR_REQUIRE_ESM = peer ships ESM-only
+// (realistic for resend / @react-email/* in a future major) and was
+// reached via createRequire — needs the async helper instead.
+// ERR_PACKAGE_PATH_NOT_EXPORTED = the bare specifier doesn't match the
+// peer's `exports` map — caller picked the wrong subpath.
+// Either is a code-level mismatch; consumers can't fix it with `npm i`,
+// so surface the original error instead of the misleading install hint.
+function isPeerLoadError(err: unknown): boolean {
+  const code = (err as NodeJS.ErrnoException).code
+  return code === "ERR_REQUIRE_ESM" || code === "ERR_PACKAGE_PATH_NOT_EXPORTED"
 }
 
 function peerErrorMessage(name: string, usedBy: string): string {
@@ -23,6 +41,15 @@ function peerErrorMessage(name: string, usedBy: string): string {
     `[@naeemba/next-starter] Optional peer '${name}' is not installed.\n` +
     `  Install it with:  npm i ${name}\n` +
     `  Used by: ${usedBy}`
+  )
+}
+
+function peerLoadErrorMessage(name: string, usedBy: string, err: unknown): string {
+  const original = err instanceof Error ? err.message : String(err)
+  return (
+    `[@naeemba/next-starter] Optional peer '${name}' is installed but failed to load.\n` +
+    `  Used by: ${usedBy}\n` +
+    `  Underlying error: ${original}`
   )
 }
 
@@ -38,11 +65,13 @@ export function loadOptionalPeer<T>(name: string, usedBy: string): T {
   try {
     return packageRequire(name) as T
   } catch (err) {
+    if (isPeerLoadError(err)) throw new Error(peerLoadErrorMessage(name, usedBy, err))
     if (!isModuleNotFound(err)) throw err
     // Retry from CWD — covers the Turbopack/virtualized-import.meta.url case.
     try {
       return cwdRequire(name) as T
     } catch (err2) {
+      if (isPeerLoadError(err2)) throw new Error(peerLoadErrorMessage(name, usedBy, err2))
       if (!isModuleNotFound(err2)) throw err2
       throw new Error(peerErrorMessage(name, usedBy))
     }
@@ -68,6 +97,7 @@ export async function loadOptionalPeerAsync<T>(
   try {
     return await importFn()
   } catch (err) {
+    if (isPeerLoadError(err)) throw new Error(peerLoadErrorMessage(name, usedBy, err))
     if (!isModuleNotFound(err)) throw err
     throw new Error(peerErrorMessage(name, usedBy))
   }
