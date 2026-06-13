@@ -38,8 +38,8 @@ BETTER_AUTH_SECRET=<32+ char random string>   # openssl rand -hex 32
 BETTER_AUTH_URL=https://app.example.com
 EMAIL_FROM=auth@example.com                    # optional in dev, required for Resend in prod
 RESEND_API_KEY=...                             # optional — when unset, magic links log to stdout
-# Note: postgres, @react-email/*, and resend are optional peer dependencies.
-# Install only the ones you actually use — see UPGRADING.md.
+# Note: postgres, @react-email/*, @better-auth/passkey, and resend are optional
+# peer dependencies. Install only the ones you actually use — see UPGRADING.md.
 ```
 
 ## Setup files in your app
@@ -58,9 +58,14 @@ export const auth = createAuth()
 ```ts
 "use client"
 import { createAuthClient } from "@naeemba/next-starter/client"
-export const authClient = createAuthClient()
+import { passkeyClient } from "@better-auth/passkey/client"
+export const authClient = createAuthClient({ passkey: passkeyClient })
 export const { signIn, signOut, useSession } = authClient
 ```
+
+> Drop the `passkeyClient` import (and the `passkey:` field) to skip
+> passkey support — the consumer bundle then excludes
+> `@better-auth/passkey` entirely.
 
 ### lib/auth-server.ts
 

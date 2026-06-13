@@ -91,8 +91,8 @@ describe("next-starter init", () => {
   // the passkey peer — not just lib/auth.ts. Each missed template
   // re-introduces the dependency: db/schema.ts re-exporting `passkey`
   // creates a migration for a table the user opted out of, and
-  // lib/auth-client.ts defaulting to `passkey: true` keeps loading
-  // @better-auth/passkey/client at runtime.
+  // lib/auth-client.ts importing `passkeyClient` from
+  // `@better-auth/passkey/client` keeps that peer in the consumer's bundle.
   it("--no-passkey drops `passkey` from db/schema.ts re-exports", () => {
     runCli(["init", dir, "--no-passkey"])
     const schema = readFileSync(join(dir, "db/schema.ts"), "utf8")
@@ -100,18 +100,20 @@ describe("next-starter init", () => {
     expect(schema).toMatch(/user, session, account, verification/)
   })
 
-  it("--no-passkey emits `passkey: false` in lib/auth-client.ts", () => {
+  it("--no-passkey omits the @better-auth/passkey/client import in lib/auth-client.ts", () => {
     runCli(["init", dir, "--no-passkey"])
     const client = readFileSync(join(dir, "lib/auth-client.ts"), "utf8")
-    expect(client).toMatch(/passkey:\s*false/)
+    expect(client).not.toMatch(/@better-auth\/passkey/)
+    expect(client).not.toMatch(/passkeyClient/)
   })
 
-  it("default init emits the passkey re-export and no `passkey: false` override", () => {
+  it("default init emits the passkey re-export and passkeyClient factory injection", () => {
     runCli(["init", dir])
     const schema = readFileSync(join(dir, "db/schema.ts"), "utf8")
     expect(schema).toMatch(/\bpasskey\b/)
     const client = readFileSync(join(dir, "lib/auth-client.ts"), "utf8")
-    expect(client).not.toMatch(/passkey:\s*false/)
+    expect(client).toMatch(/import \{ passkeyClient \} from "@better-auth\/passkey\/client"/)
+    expect(client).toMatch(/passkey:\s*passkeyClient/)
   })
 
   // The sign-in page must propagate `google` / `passkey` props or
@@ -289,5 +291,15 @@ describe("next-starter init", () => {
     expect(stdout).toMatch(/Install only the peers you actually use/)
     // The old all-in-one line that contradicted optional-peers should be gone.
     expect(stdout).not.toMatch(/npm install @naeemba\/next-starter@latest postgres @react-email/)
+  })
+
+  it("install hint includes @better-auth/passkey when passkey is enabled (default)", () => {
+    const { stdout } = runCli(["init", dir])
+    expect(stdout).toMatch(/npm install @better-auth\/passkey/)
+  })
+
+  it("install hint omits @better-auth/passkey under --no-passkey", () => {
+    const { stdout } = runCli(["init", dir, "--no-passkey"])
+    expect(stdout).not.toMatch(/@better-auth\/passkey/)
   })
 })

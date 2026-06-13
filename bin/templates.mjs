@@ -17,11 +17,12 @@ export const auth = createAuth({${google ? `
 `
 
 export const libAuthClient = ({ passkey }) => `"use client"
-import { createAuthClient } from "@naeemba/next-starter/client"
+import { createAuthClient } from "@naeemba/next-starter/client"${passkey ? `
+import { passkeyClient } from "@better-auth/passkey/client"` : ""}
 
 export const authClient = createAuthClient({
-  baseURL: process.env.NEXT_PUBLIC_BETTER_AUTH_URL,${passkey ? "" : `
-  passkey: false,`}
+  baseURL: process.env.NEXT_PUBLIC_BETTER_AUTH_URL,${passkey ? `
+  passkey: passkeyClient,` : ""}
 })
 `
 

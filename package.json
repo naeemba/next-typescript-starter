@@ -99,12 +99,12 @@
     "changelog": "conventional-changelog -p conventionalcommits -i CHANGELOG.md -s -r 1"
   },
   "dependencies": {
-    "@better-auth/passkey": "^1.6.16",
     "better-auth": "^1.6.16",
     "drizzle-orm": "^0.45.2",
     "zod": "^4.4.3"
   },
   "peerDependencies": {
+    "@better-auth/passkey": ">=1.6.0",
     "@react-email/components": ">=1.0.0",
     "@react-email/render": ">=2.0.0",
     "next": ">=16.0.0",
@@ -114,6 +114,9 @@
     "resend": ">=6.0.0"
   },
   "peerDependenciesMeta": {
+    "@better-auth/passkey": {
+      "optional": true
+    },
     "@react-email/components": {
       "optional": true
     },
@@ -128,6 +131,7 @@
     }
   },
   "devDependencies": {
+    "@better-auth/passkey": "^1.6.16",
     "@react-email/components": "^1.0.12",
     "@react-email/render": "^2.0.8",
     "@testing-library/dom": "^10.4.1",

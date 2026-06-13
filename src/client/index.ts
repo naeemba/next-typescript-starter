@@ -3,7 +3,20 @@
 import { useEffect, useState } from "react"
 import { createAuthClient as betterAuthCreateClient } from "better-auth/react"
 import { magicLinkClient } from "better-auth/client/plugins"
-import { passkeyClient } from "@better-auth/passkey/client"
+
+// `@better-auth/passkey/client` is browser code — `loadOptionalPeer` (Node
+// `createRequire`-based) can't load it, so the sync server pattern doesn't
+// apply here. Instead the consumer passes the factory in. That keeps our
+// bundle free of any top-level `@better-auth/passkey/client` reference, so
+// a consumer who scaffolds with `--no-passkey` (or just omits the option)
+// gets a bundle without it — and `@better-auth/passkey` can sit in
+// peerDependencies marked optional rather than a hard dependency we'd
+// otherwise force into every consumer's node_modules.
+//
+// Structural type — not `typeof import("@better-auth/passkey/client").passkeyClient`
+// — so our shipped `.d.ts` doesn't reference the optional peer at all.
+// Consumers without it can typecheck cleanly.
+type PasskeyClientFactory = () => { id?: string } & Record<string, unknown>
 
 /**
  * Returns whether the current browser supports WebAuthn (the `PublicKeyCredential`
@@ -54,43 +67,59 @@ export interface SocialAuthClient {
 export interface CreateAuthClientOptions {
   baseURL?: string
   /**
-   * Load the @better-auth/passkey client plugin. Defaults to `true`.
+   * Enable passkey support by passing the `passkeyClient` factory from
+   * `@better-auth/passkey/client`:
    *
-   * When `false`, the returned client's TYPE drops `PasskeyAuthClient` too
-   * (via the function overload below) — so a consumer who calls
-   * `createAuthClient({ passkey: false })` cannot accidentally reach for
-   * `client.passkey.addPasskey` and hit a runtime `TypeError`.
+   * ```ts
+   * import { createAuthClient } from "@naeemba/next-starter/client"
+   * import { passkeyClient } from "@better-auth/passkey/client"
+   *
+   * export const authClient = createAuthClient({
+   *   baseURL: process.env.NEXT_PUBLIC_BETTER_AUTH_URL,
+   *   passkey: passkeyClient,
+   * })
+   * ```
+   *
+   * Omit (or pass `false`) to skip. With the factory omitted, this module
+   * has no top-level `@better-auth/passkey/client` import, so the consumer
+   * bundle excludes it entirely — `@better-auth/passkey` can be left
+   * uninstalled.
    */
-  passkey?: boolean
+  passkey?: PasskeyClientFactory | false
 }
 
-/** AuthClient when the passkey plugin is loaded (the default). */
+/** AuthClient when a passkey factory was passed. */
 export type AuthClient =
   ReturnType<typeof betterAuthCreateClient>
   & MagicLinkAuthClient
   & PasskeyAuthClient
   & SocialAuthClient
 
-/** AuthClient when `createAuthClient({ passkey: false })` was used. */
+/** AuthClient when no passkey factory was passed (the default). */
 export type AuthClientWithoutPasskey =
   ReturnType<typeof betterAuthCreateClient>
   & MagicLinkAuthClient
   & SocialAuthClient
 
-// Overloads: the literal `{ passkey: false }` narrows away `PasskeyAuthClient`.
-// Anything else (including `passkey: true` and the default) returns the full
-// AuthClient. The order matters — the most-specific signature must come first.
+// Overloads: passing a passkey factory widens the return type to include
+// the passkey surface; the default (no factory or `false`) narrows it away.
+// Order matters — most-specific signature first.
 export function createAuthClient(
-  opts: CreateAuthClientOptions & { passkey: false }
-): AuthClientWithoutPasskey
-export function createAuthClient(opts?: CreateAuthClientOptions): AuthClient
-export function createAuthClient(opts: CreateAuthClientOptions = {}): AuthClient {
+  opts: CreateAuthClientOptions & { passkey: PasskeyClientFactory },
+): AuthClient
+export function createAuthClient(opts?: CreateAuthClientOptions): AuthClientWithoutPasskey
+export function createAuthClient(
+  opts: CreateAuthClientOptions = {},
+): AuthClient | AuthClientWithoutPasskey {
   const baseURL =
     opts.baseURL ??
     (typeof process !== "undefined" ? process.env.NEXT_PUBLIC_BETTER_AUTH_URL : undefined)
-  const plugins: Array<ReturnType<typeof magicLinkClient> | ReturnType<typeof passkeyClient>> = [
-    magicLinkClient(),
-  ]
-  if (opts.passkey ?? true) plugins.push(passkeyClient())
-  return betterAuthCreateClient({ baseURL, plugins }) as AuthClient
+  const plugins: Array<ReturnType<typeof magicLinkClient>> = [magicLinkClient()]
+  // Cast: passkeyClient() returns better-auth's BetterAuthClientPlugin (non-
+  // optional `id`), but we type the factory structurally so our `.d.ts` doesn't
+  // pull in `@better-auth/passkey/client` for consumers that don't use it.
+  if (typeof opts.passkey === "function") {
+    plugins.push(opts.passkey() as unknown as ReturnType<typeof magicLinkClient>)
+  }
+  return betterAuthCreateClient({ baseURL, plugins }) as unknown as AuthClient
 }

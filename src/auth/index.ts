@@ -1,11 +1,21 @@
 import { betterAuth, type Auth, type BetterAuthOptions } from "better-auth"
 import { magicLink } from "better-auth/plugins"
-import { passkey as passkeyPlugin } from "@better-auth/passkey"
 import { drizzleAdapter } from "better-auth/adapters/drizzle"
 import { createDb, createDbOptionsFromEnv } from "../db/index.js"
 import * as schema from "../schema/index.js"
 import { sendMagicLink, type MagicLinkEmailFields } from "../email/index.js"
+import { loadOptionalPeer } from "../internal/optional-peer.js"
 import { parseEnv } from "./config.js"
+
+// `@better-auth/passkey` is loaded lazily so consumers who don't enable
+// passkey (`createAuth({})` without the `passkey` block) neither install
+// nor bundle it. Type-only structural shape — `typeof import(...)` would
+// leak into our shipped `.d.ts` and force tsc resolution at consumer
+// build time even when the dep is absent.
+interface PasskeyServerModule {
+  passkey: (opts: { rpName: string; rpID: string; origin: string }) =>
+    NonNullable<BetterAuthOptions["plugins"]>[number]
+}
 
 type DrizzleAdapterDb = Parameters<typeof drizzleAdapter>[0]
 
@@ -227,16 +237,20 @@ export function createAuth(opts: CreateAuthOptions = {}): Auth {
   }
 
   if (opts.passkey) {
+    const passkeyMod = loadOptionalPeer<PasskeyServerModule>(
+      "@better-auth/passkey",
+      "createAuth({ passkey })",
+    )
     const url = new URL(env.BETTER_AUTH_URL)
     // url.origin strips path + trailing slash; @simplewebauthn/server does a
     // strict equality check against the browser-sent RFC 6454 origin, which
     // also has no path or trailing slash.
-    const plugin = passkeyPlugin({
+    const plugin = passkeyMod.passkey({
       rpName: opts.passkey.rpName ?? url.hostname,
       rpID: opts.passkey.rpID ?? url.hostname,
       origin: opts.passkey.origin ?? url.origin,
     })
-    config.plugins = [...(config.plugins ?? []), plugin as unknown as NonNullable<BetterAuthOptions["plugins"]>[number]]
+    config.plugins = [...(config.plugins ?? []), plugin]
   }
 
   if (opts.session) {

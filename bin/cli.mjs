@@ -240,13 +240,16 @@ async function run() {
     )
   }
 
+  const passkeyHint = args.passkey
+    ? `       npm install @better-auth/passkey                            # passkey support (the --passkey default)\n`
+    : ""
   stdout.write(`
 Next steps:
   1. Install only the peers you actually use:
        npm install @naeemba/next-starter@latest postgres            # Drizzle/Postgres
        npm install @react-email/components @react-email/render      # default magic-link template
        npm install resend                                           # production email transport
-     (All four are optional — install just what your config touches.)
+${passkeyHint}     (All optional — install just what your config touches.)
   2. Fill in .env.example -> .env (DATABASE_URL, BETTER_AUTH_SECRET, BETTER_AUTH_URL)
   3. Run your drizzle migrations against the better-auth schema
   4. npm run dev — visit /sign-in

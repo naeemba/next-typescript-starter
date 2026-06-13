@@ -4,21 +4,26 @@
 
 ### Optional peer dependencies
 
-`postgres`, `@react-email/components`, `@react-email/render`, and `resend` moved from `dependencies` to `peerDependencies` (with `peerDependenciesMeta.optional = true`). If you installed `@naeemba/next-starter` with an `npm i` that pinned a lockfile, you already have these packages and nothing changes. On a fresh install you'll see a peer warning if you skip one — install whichever you use:
+`postgres`, `@react-email/components`, `@react-email/render`, `resend`, and `@better-auth/passkey` moved from `dependencies` to `peerDependencies` (with `peerDependenciesMeta.optional = true`). If you installed `@naeemba/next-starter` with an `npm i` that pinned a lockfile, you already have these packages and nothing changes. On a fresh install you'll see a peer warning if you skip one — install whichever you use:
 
 ```bash
-# Default path (postgres + Resend + the built-in magic-link template)
-npm i postgres @react-email/components @react-email/render resend
+# Default path (postgres + Resend + the built-in magic-link template + passkey)
+npm i postgres @react-email/components @react-email/render resend @better-auth/passkey
 
 # BYO db client (createAuth({ db })) — skip postgres
-npm i @react-email/components @react-email/render resend
+npm i @react-email/components @react-email/render resend @better-auth/passkey
 
 # Custom magic-link email (magicLink: { email: ... }) — skip @react-email/*
-npm i postgres resend
+npm i postgres resend @better-auth/passkey
 
 # BYO transport (skip the built-in Resend transport) — skip resend
-npm i postgres @react-email/components @react-email/render
+npm i postgres @react-email/components @react-email/render @better-auth/passkey
+
+# No passkey support — skip @better-auth/passkey
+npm i postgres @react-email/components @react-email/render resend
 ```
+
+`@better-auth/passkey` is loaded lazily on the server (via `loadOptionalPeer` inside `createAuth({ passkey })`) and via factory injection on the client (`createAuthClient({ passkey: passkeyClient })`). If you don't enable passkey on either side, the dep is never resolved and your bundle excludes it.
 
 If a runtime path needs a peer that isn't installed, you'll see an instructional error like:
 
