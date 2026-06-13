@@ -95,8 +95,12 @@
     "test:watch": "vitest",
     "prepublishOnly": "npm run typecheck && npm run test && npm run build",
     "preversion": "npm run typecheck && npm run test && npm run build",
+    "version": "npm run changelog && git add CHANGELOG.md",
     "postversion": "git push --follow-tags",
-    "changelog": "conventional-changelog -p conventionalcommits -i CHANGELOG.md -s -r 1"
+    "changelog": "node scripts/regenerate-changelog.mjs",
+    "release:patch": "node scripts/release-preflight.mjs && npm version patch -m \"chore(release): %s\"",
+    "release:minor": "node scripts/release-preflight.mjs && npm version minor -m \"chore(release): %s\"",
+    "release:major": "node scripts/release-preflight.mjs && npm version major -m \"chore(release): %s\""
   },
   "dependencies": {
     "better-auth": "^1.6.16",
