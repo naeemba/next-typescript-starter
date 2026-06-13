@@ -2,25 +2,17 @@
 
 All notable changes to `@naeemba/next-starter`. Migration steps live in [UPGRADING.md](./UPGRADING.md).
 
-## 0.6.0
+## [0.6.0](https://github.com/naeemba/next-typescript-starter/compare/v0.5.0...v0.6.0) (2026-06-13)
 
-### Added
+### Features
 
-- `<SignInForm/>` and `<SignInPage/>` now read `?callbackUrl=` from the URL query string and forward it as the post-sign-in redirect — resolution order is query → prop → `"/"`. Fixes the proxy → sign-in roundtrip where `proxy.ts` redirected `/studio → /sign-in?callbackUrl=/studio` but the user landed back on `/` after magic-link verify. The new `callbackParam` prop (default `"callbackUrl"`) lets you change the query name to match a non-default `createProxy({ callbackParam })`.
-- **Open-redirect defense-in-depth.** Query-string callbackUrl values are dropped silently if they target a different origin or use a `javascript:`/`data:` scheme. Protocol-relative bypasses (`//evil.com`, `/\evil.com`) are also rejected. Falls through to the prop / `"/"`.
-- **Schema indexes on every FK / lookup column.** `session(user_id)`, `account(user_id)`, `verification(identifier)`, and `passkey(user_id)` ship with indexes — every auth check, sign-in, and magic-link verify is no longer a sequential scan. Existing consumers get a single one-line `CREATE INDEX` per table on the next `drizzle-kit generate`; greenfield consumers see no churn.
-- `<PasskeyManagerPage/>` exported from `@naeemba/next-starter/pages/passkey-manager` — chrome-wrapped variant of `<PasskeyManager/>` parallel to `<SignInPage/>`'s relationship with `<SignInForm/>`. Heading + description + main wrapper.
-- `<SignInErrorPage/>` exported from `@naeemba/next-starter/pages/sign-in` — friendly user-facing copy for better-auth's magic-link verify errors (`INVALID_TOKEN`, `EXPIRED_TOKEN`, `TOKEN_NOT_FOUND`, plus lowercase variants). Overridable per-code via `errorMessages`.
-- `<SignInForm/>` accepts `errorCallbackUrl` and forwards it as `errorCallbackURL` on the magic-link sign-in call. Better-auth's verify endpoint redirects to that URL with `?error=<code>` on failure — pair with `<SignInErrorPage/>` for the friendly path.
-- `createAuth({ rateLimit })` — surface better-auth's top-level rate-limit knob (`{ enabled?, window?, max?, storage? }` or `false`). Defaults unchanged (better-auth: on in production). New env var `BETTER_AUTH_RATE_LIMIT_DISABLED=1` force-disables for local-dev iteration; an explicit `{ enabled: true }` overrides the env so production configs aren't silently downgraded.
-- `createAuth({ transport })` — BYO email delivery for magic-link mail. `transport(args)` receives the fully rendered fields (`to`, `from`, `subject`, `text?`, `html?`) and is responsible for sending. When set, the built-in Resend/console dispatch is skipped entirely — no `RESEND_API_KEY` required. Composes with `allowlist` and a custom `magicLink.email` template.
-- CLI: scaffolds `proxy.ts` at the project root by default. Skipped when `--no-proxy` is passed, an existing `proxy.ts` is preserved (consumer-owned), or an existing `middleware.ts` / `src/proxy.ts` / `src/middleware.ts` is detected (so the CLI doesn't drop a competing gate next to one the consumer already has).
-- CLI: scaffolds `app/account/passkeys/page.tsx` wired to `<PasskeyManagerPage/>` whenever `--passkey` is enabled (the default). Skipped under `--no-passkey`.
-- CLI: scaffolds `app/sign-in/error/page.tsx` wired to `<SignInErrorPage/>`. The scaffolded `app/sign-in/page.tsx` sets `errorCallbackUrl="/sign-in/error"` so a fresh consumer gets the wired error flow with no extra setup.
-
-### Changed
-
-- `MagicLinkAuthClient` widens to accept an optional `errorCallbackURL` on the magic-link sign-in call. Source-compatible — existing call sites that pass only `email` + `callbackURL` continue to typecheck.
+* **auth:** rateLimit knob + BETTER_AUTH_RATE_LIMIT_DISABLED env override ([323591f](https://github.com/naeemba/next-typescript-starter/commit/323591f9af9acacaf47c681616107f2fb61a1d64))
+* **auth:** transport injection — BYO email delivery for magic-link mail ([b581c95](https://github.com/naeemba/next-typescript-starter/commit/b581c959d3dc30567db6d2cf5438ae156fe05334))
+* **cli:** scaffold proxy.ts by default ([ecf1c4b](https://github.com/naeemba/next-typescript-starter/commit/ecf1c4b6cf00d9142bd6925c6bd20654a14383f4))
+* **passkey-manager:** ship PasskeyManagerPage wrapper + CLI scaffold ([70a344f](https://github.com/naeemba/next-typescript-starter/commit/70a344fb58679c223a04537ed8d83d0f4257c76d))
+* **schema:** index FK / lookup columns on session, account, verification, passkey ([1d49041](https://github.com/naeemba/next-typescript-starter/commit/1d490413fb0dbe9ec9243e208250df8b722cda74))
+* **sign-in:** read callbackUrl from query string ([56f4fad](https://github.com/naeemba/next-typescript-starter/commit/56f4fad189b8a055c8506bc2c48ab4342b61182e))
+* **sign-in:** ship SignInErrorPage + wire errorCallbackUrl through ([78ab268](https://github.com/naeemba/next-typescript-starter/commit/78ab268f5f565cf1c78d4a29feb8874d299ec7e1))
 
 ## 0.5.0
 
