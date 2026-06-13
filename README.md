@@ -54,7 +54,7 @@ import { createAuth } from "@naeemba/next-starter/auth"
 export const auth = createAuth()
 ```
 
-`createAuth` accepts options for `magicLink` (custom expiry, `allowlist`, custom `email` template), `session` (override session cookie / expiry settings), `google`, `passkey`, `singleAdmin` (lock sign-in to one or more emails), and `accountLinking`.
+`createAuth` accepts options for `magicLink` (custom expiry, `allowlist`, custom `email` template), `session` (override session cookie / expiry settings), `google`, `passkey`, `singleAdmin` (lock sign-in to one or more emails), `accountLinking`, `rateLimit` (better-auth's rate-limit knob; `BETTER_AUTH_RATE_LIMIT_DISABLED=1` env force-disables for local dev), and `transport` (BYO email delivery — replaces the built-in Resend/console dispatch for magic-link mail).
 
 ### lib/auth-client.ts
 
@@ -97,9 +97,22 @@ export const { GET, POST } = createAuthRoute(auth)
 import { SignInPage } from "@naeemba/next-starter/pages/sign-in"
 import { authClient } from "@/lib/auth-client"
 export default function Page() {
-  return <SignInPage authClient={authClient} />
+  return <SignInPage authClient={authClient} errorCallbackUrl="/sign-in/error" />
 }
 ```
+
+`SignInPage` reads `?callbackUrl=` from the URL query string and forwards it as the post-sign-in redirect (falling back to the `callbackUrl` prop, then `"/"`). Cross-origin and protocol-relative values are dropped silently to prevent open-redirect abuse. Set `callbackParam` to use a different query name. Set `errorCallbackUrl` to redirect to a friendly page when the magic-link verify endpoint fails — see the [SignInErrorPage](#magic-link-error-pages) recipe below.
+
+### app/sign-in/error/page.tsx
+
+```tsx
+import { SignInErrorPage } from "@naeemba/next-starter/pages/sign-in"
+export default function Page() {
+  return <SignInErrorPage />
+}
+```
+
+Renders a heading + user-friendly message based on the `?error=<code>` query the magic-link verify endpoint redirects to on failure (expired token, used token, etc).
 
 ### db/schema.ts
 
@@ -188,18 +201,19 @@ Render the sign-in button:
 
 The button is hidden silently in browsers without WebAuthn support.
 
-Add a registration page (any signed-in user can call it):
+Add a registration page (the `init` CLI scaffolds this automatically when `--passkey` is enabled — the default):
 
 ```tsx
-// app/settings/passkeys/page.tsx
-"use client"
-import { PasskeyManager } from "@naeemba/next-starter/pages/passkey-manager"
-import { authClient } from "../../../lib/auth-client"
+// app/account/passkeys/page.tsx
+import { PasskeyManagerPage } from "@naeemba/next-starter/pages/passkey-manager"
+import { authClient } from "@/lib/auth-client"
 
 export default function Page() {
-  return <PasskeyManager authClient={authClient} />
+  return <PasskeyManagerPage authClient={authClient} />
 }
 ```
+
+`PasskeyManagerPage` is the chrome-wrapped variant (heading + description + main wrapper, parallel to `SignInPage`). Use the lower-level `PasskeyManager` directly if you want to drop the "Add a passkey" button into existing settings UI.
 
 ## Reading the session in a Server Component
 
@@ -213,6 +227,78 @@ export default async function Page() {
 ```
 
 Use `getSession` instead of `requireSession` if you want to handle the unauthenticated case yourself (it returns `null` rather than redirecting).
+
+## Common UX recipes
+
+### Sign out
+
+```tsx
+"use client"
+import { authClient } from "@/lib/auth-client"
+import { useRouter } from "next/navigation"
+
+export function SignOutButton() {
+  const router = useRouter()
+  return (
+    <button
+      type="button"
+      onClick={async () => {
+        await authClient.signOut()
+        router.push("/sign-in")
+        router.refresh()  // clears server-component sessions
+      }}
+    >
+      Sign out
+    </button>
+  )
+}
+```
+
+`authClient.signOut()` clears the better-auth session cookie. `router.refresh()` is what tells server components to re-read the session — without it, the user appears signed in until the next navigation.
+
+### Magic-link error pages
+
+Set `errorCallbackUrl="/sign-in/error"` on `SignInPage`. When the verify endpoint fails, better-auth redirects to that URL with `?error=<code>`. Pair with `<SignInErrorPage/>` for friendly copy. Override codes with `errorMessages`:
+
+```tsx
+<SignInErrorPage
+  errorMessages={{ EXPIRED_TOKEN: "Your link timed out. Request a new one." }}
+/>
+```
+
+### Rate limits
+
+```ts
+createAuth({
+  rateLimit: { window: 60, max: 5 },  // shorter window / lower max than the prod default
+})
+```
+
+Pass `rateLimit: false` to disable entirely, or export `BETTER_AUTH_RATE_LIMIT_DISABLED=1` to force-disable for local dev (the env var is overridden by an explicit `{ enabled: true }`).
+
+### BYO email transport
+
+Skip the built-in Resend dispatch entirely — use your existing email wrapper:
+
+```ts
+import { sendEmail as mySendEmail } from "@/lib/email"
+
+createAuth({
+  transport: async ({ to, from, subject, text, html }) => {
+    await mySendEmail({ to, from, subject, text, html })
+  },
+})
+```
+
+The transport receives the fully rendered email (subject, html, text). `RESEND_API_KEY` is not needed when transport is set. `allowlist` still gates ahead of transport — rejected addresses never reach your function.
+
+### Custom `callbackUrl` query param
+
+```tsx
+<SignInPage authClient={authClient} callbackParam="next" />
+```
+
+Pair with `createProxy({ callbackParam: "next" })` so the proxy → sign-in roundtrip uses the same query name end-to-end.
 
 ## Protecting routes with proxy.ts
 
@@ -275,8 +361,8 @@ This package is ESM-only with subpath `exports`. Your consumer `tsconfig.json` *
 | `@naeemba/next-starter/schema` | Drizzle table definitions |
 | `@naeemba/next-starter/db` | Lazy Drizzle client |
 | `@naeemba/next-starter/email` | `sendMagicLink({ to, url })` |
-| `@naeemba/next-starter/pages/sign-in` | `SignInForm` (headless) + `SignInPage` (with chrome) — supports `google`, `passkey`, `magicLink` props |
-| `@naeemba/next-starter/pages/passkey-manager` | `PasskeyManager` — "Add a passkey" button for settings pages |
+| `@naeemba/next-starter/pages/sign-in` | `SignInForm` (headless), `SignInPage` (with chrome), `SignInErrorPage` (friendly magic-link error UI). Supports `google`, `passkey`, `magicLink` props; reads `?callbackUrl=` from the URL with open-redirect defense. |
+| `@naeemba/next-starter/pages/passkey-manager` | `PasskeyManager` (button only) + `PasskeyManagerPage` (with chrome) — "Add a passkey" UI for settings pages |
 | `@naeemba/next-starter/server` | `createServer(auth)` — returns `getSession`, `requireSession` |
 | `@naeemba/next-starter/proxy` | `createProxy` Edge-safe helper for redirecting unauthenticated traffic to your sign-in page (Next 16 `proxy.ts` convention). Also re-exports `getSessionCookie` for custom proxies. |
 
@@ -288,7 +374,7 @@ The re-export shim pattern is deliberate: it keeps the package's surface minimal
 
 ## Styling
 
-`<SignInForm/>`, `<SignInPage/>`, and `<PasskeyManager/>` ship with **minimal inline styles** (plain HTML attributes) — no CSS file, no Tailwind classes, no styled-components dependency.
+`<SignInForm/>`, `<SignInPage/>`, `<SignInErrorPage/>`, `<PasskeyManager/>`, and `<PasskeyManagerPage/>` ship with **minimal inline styles** (plain HTML attributes) — no CSS file, no Tailwind classes, no styled-components dependency.
 
 For one-off targeting, every component takes a `className` prop. For full restyling (Tailwind, shadcn, your design system), use `classNames`:
 
