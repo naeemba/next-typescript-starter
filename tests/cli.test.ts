@@ -594,6 +594,63 @@ describe("next-starter init", () => {
     })
   })
 
+  // 0.6.0 — scaffold proxy.ts by default so a fresh consumer with passkey /
+  // google enabled has a working /admin gate out of the box, instead of
+  // having to read the README to discover createProxy.
+  describe("proxy.ts scaffold (default-on)", () => {
+    it("writes proxy.ts at project root with createProxy + a sample protect pattern", () => {
+      runCli(["init", dir])
+      expect(existsSync(join(dir, "proxy.ts"))).toBe(true)
+      const proxy = readFileSync(join(dir, "proxy.ts"), "utf8")
+      expect(proxy).toMatch(/from "@naeemba\/next-starter\/proxy"/)
+      expect(proxy).toMatch(/createProxy/)
+      expect(proxy).toMatch(/protect:\s*\[/)
+      // A starter matcher that excludes Next internals + the auth route.
+      expect(proxy).toMatch(/export const config = \{ matcher:/)
+    })
+
+    it("--no-proxy skips proxy.ts entirely", () => {
+      runCli(["init", dir, "--no-proxy"])
+      expect(existsSync(join(dir, "proxy.ts"))).toBe(false)
+    })
+
+    // Skip if an existing proxy.ts is present — never overwrite the
+    // consumer's gate. Consumer-owned, even with --force.
+    it("preserves an existing proxy.ts even with --force", () => {
+      const custom = `// custom proxy\nexport default function () {}\n`
+      writeFileSync(join(dir, "proxy.ts"), custom)
+      const { stdout } = runCli(["init", dir, "--force"])
+      expect(readFileSync(join(dir, "proxy.ts"), "utf8")).toBe(custom)
+      expect(stdout).toMatch(/proxy\.ts.*consumer-owned/)
+    })
+
+    // Skip if a middleware.ts (pre-Next-16 file) is present — the consumer
+    // already has a gate, and dropping a proxy.ts next to it would create
+    // two competing handlers.
+    it("skips proxy.ts when middleware.ts already exists", () => {
+      writeFileSync(join(dir, "middleware.ts"), `export default function () {}\n`)
+      const { stdout } = runCli(["init", dir])
+      expect(existsSync(join(dir, "proxy.ts"))).toBe(false)
+      expect(stdout).toMatch(/proxy\.ts.*existing.*middleware/)
+    })
+
+    // Under --src, the proxy.ts still lives at the project root — Next 16
+    // looks there, not under src/.
+    it("writes proxy.ts at project root even under --src", () => {
+      runCli(["init", dir, "--src"])
+      expect(existsSync(join(dir, "proxy.ts"))).toBe(true)
+      expect(existsSync(join(dir, "src/proxy.ts"))).toBe(false)
+    })
+
+    it("skips proxy.ts when src/proxy.ts already exists", () => {
+      mkdirSync(join(dir, "src"), { recursive: true })
+      writeFileSync(join(dir, "src/proxy.ts"), `export default function () {}\n`)
+      const { stdout } = runCli(["init", dir, "--src"])
+      expect(existsSync(join(dir, "proxy.ts"))).toBe(false)
+      expect(stdout).toMatch(/proxy\.ts.*existing/)
+    })
+  })
+
   // 0.5.0 — the old README told consumers to add an `auth:generate` script.
   // That script is now dead code (schema ships from
   // @naeemba/next-starter/schema). Detect and report; opt-in remove via

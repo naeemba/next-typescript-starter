@@ -76,6 +76,37 @@ describe("<SignInForm/> callbackUrl resolution", () => {
     expect(magicLink).toHaveBeenCalledWith({ email: "a@example.com", callbackURL: "/from-prop" })
   })
 
+  // Defense-in-depth: a phisher can craft /sign-in?callbackUrl=https://evil.com
+  // and rely on better-auth's trustedOrigins not being configured strictly.
+  // The form silently drops non-same-origin values and falls back to the prop / "/".
+  describe.each([
+    ["//evil.com", "protocol-relative bypass"],
+    ["/\\evil.com", "backslash bypass"],
+    ["https://evil.com/x", "cross-origin absolute URL"],
+    ["javascript:alert(1)", "javascript: scheme"],
+    ["data:text/html,x", "data: scheme"],
+  ])("rejects unsafe callbackUrl '%s' (%s)", (badValue) => {
+    it("falls back to the prop", async () => {
+      const { authClient, magicLink } = makeAuthClient()
+      window.history.replaceState({}, "", `/sign-in?callbackUrl=${encodeURIComponent(badValue)}`)
+      render(<SignInForm authClient={authClient} callbackUrl="/safe" />)
+      await submitWithEmail("a@example.com")
+      await waitFor(() => expect(magicLink).toHaveBeenCalled())
+      expect(magicLink).toHaveBeenCalledWith({ email: "a@example.com", callbackURL: "/safe" })
+    })
+  })
+
+  it("accepts a same-origin absolute URL (production proxy round-trip case)", async () => {
+    const { authClient, magicLink } = makeAuthClient()
+    // jsdom defaults window.location.origin to http://localhost:3000
+    const sameOriginAbsolute = `${window.location.origin}/admin`
+    window.history.replaceState({}, "", `/sign-in?callbackUrl=${encodeURIComponent(sameOriginAbsolute)}`)
+    render(<SignInForm authClient={authClient} callbackUrl="/decoy" />)
+    await submitWithEmail("a@example.com")
+    await waitFor(() => expect(magicLink).toHaveBeenCalled())
+    expect(magicLink).toHaveBeenCalledWith({ email: "a@example.com", callbackURL: sameOriginAbsolute })
+  })
+
   it("passes the resolved URL through to social sign-in too", async () => {
     const magicLink = vi.fn(async () => ({ error: null }))
     const social = vi.fn(async () => ({ error: null }))

@@ -105,10 +105,35 @@ export interface SignInFormProps {
 type Status = "idle" | "sending" | "sent" | "error"
 type MethodStatus = { magicLink: Status; google: Status; passkey: Status }
 
+// Open-redirect defense-in-depth. The query-string value travels from
+// /sign-in?callbackUrl=... to better-auth's signIn call, which echoes it back
+// in the post-auth redirect. better-auth's own `trustedOrigins` is the
+// authoritative gate, but a bare passthrough here also lets a phisher
+// craft https://app.example.com/sign-in?callbackUrl=https://evil.example.com
+// and rely on the user noticing the final hop. Accept only same-origin
+// paths; silently drop anything else and fall through to prop / "/".
+//
+// Rejected shapes:
+//   - "//evil.com"   — protocol-relative; resolves to scheme://evil.com
+//   - "/\\evil.com"  — backslash bypass that some URL parsers normalize
+//   - "javascript:…" / "data:…" / "http(s)://…" — explicit schemes
+//   - any absolute URL whose origin != window.location.origin
+function isSafeSameOriginCallbackUrl(value: string): boolean {
+  if (value.startsWith("//") || value.startsWith("/\\")) return false
+  if (value.startsWith("/")) return true
+  if (typeof window === "undefined") return false
+  try {
+    const parsed = new URL(value, window.location.origin)
+    return parsed.origin === window.location.origin
+  } catch {
+    return false
+  }
+}
+
 function resolveCallbackUrl(callbackParam: string, propValue: string | undefined): string {
   if (typeof window !== "undefined") {
     const fromQuery = new URLSearchParams(window.location.search).get(callbackParam)
-    if (fromQuery) return fromQuery
+    if (fromQuery && isSafeSameOriginCallbackUrl(fromQuery)) return fromQuery
   }
   return propValue ?? "/"
 }

@@ -82,6 +82,20 @@ export default function Page() {
 }
 `
 
+// Next 16 root-level proxy.ts. Default scaffolds a sample /admin/:path* gate.
+// The matcher excludes Next internals and the auth route — the latter MUST
+// stay outside the protect-and-redirect path or the magic-link verify
+// endpoint itself would 302 to /sign-in and the magic link would never land.
+// Consumers needing host canonicalization, geo gating, or A/B routing should
+// switch to a custom proxy.ts using the re-exported `getSessionCookie` from
+// `@naeemba/next-starter/proxy` — see the README's "Custom proxy.ts" section.
+export const proxyTemplate = `import { createProxy } from "@naeemba/next-starter/proxy"
+
+export default createProxy({ protect: ["/admin/:path*"] })
+
+export const config = { matcher: ["/((?!_next/|favicon.ico|api/auth/).*)"] }
+`
+
 export const envExample = `DATABASE_URL=postgres://user:pass@host:5432/db
 BETTER_AUTH_SECRET=<32+ char random string — generate with: openssl rand -hex 32>
 BETTER_AUTH_URL=http://localhost:3000
