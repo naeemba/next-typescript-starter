@@ -82,6 +82,14 @@ export default function Page() {
 }
 `
 
+export const passkeyManagerPage = `import { PasskeyManagerPage } from "@naeemba/next-starter/pages/passkey-manager"
+import { authClient } from "@/lib/auth-client"
+
+export default function Page() {
+  return <PasskeyManagerPage authClient={authClient} />
+}
+`
+
 // Next 16 root-level proxy.ts. Default scaffolds a sample /admin/:path* gate.
 // The matcher excludes Next internals and the auth route — the latter MUST
 // stay outside the protect-and-redirect path or the magic-link verify

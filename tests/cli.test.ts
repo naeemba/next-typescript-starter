@@ -651,6 +651,47 @@ describe("next-starter init", () => {
     })
   })
 
+  // 0.6.0 — scaffold a passkey-management UI when passkey is enabled. A
+  // fresh consumer running `init` with the default --passkey gets an
+  // app/account/passkeys/page.tsx so users can register a key without the
+  // consumer hand-wiring <PasskeyManagerPage/> from the README.
+  describe("passkey-manager page scaffold", () => {
+    it("default init writes app/account/passkeys/page.tsx wired to authClient", () => {
+      runCli(["init", dir])
+      const path = join(dir, "app/account/passkeys/page.tsx")
+      expect(existsSync(path)).toBe(true)
+      const page = readFileSync(path, "utf8")
+      expect(page).toMatch(/PasskeyManagerPage/)
+      expect(page).toMatch(/from "@naeemba\/next-starter\/pages\/passkey-manager"/)
+      expect(page).toMatch(/from "@\/lib\/auth-client"/)
+    })
+
+    it("--no-passkey omits the passkey-manager page", () => {
+      runCli(["init", dir, "--no-passkey"])
+      expect(existsSync(join(dir, "app/account/passkeys/page.tsx"))).toBe(false)
+    })
+
+    it("--src writes the page under src/", () => {
+      runCli(["init", dir, "--src"])
+      expect(existsSync(join(dir, "src/app/account/passkeys/page.tsx"))).toBe(true)
+      expect(existsSync(join(dir, "app/account/passkeys/page.tsx"))).toBe(false)
+    })
+
+    it("skips an existing page without --force", () => {
+      runCli(["init", dir, "--no-src"])
+      writeFileSync(join(dir, "app/account/passkeys/page.tsx"), "// custom\n")
+      runCli(["init", dir, "--no-src"])
+      expect(readFileSync(join(dir, "app/account/passkeys/page.tsx"), "utf8")).toBe("// custom\n")
+    })
+
+    it("overwrites an existing page with --force (starter-owned)", () => {
+      runCli(["init", dir, "--no-src"])
+      writeFileSync(join(dir, "app/account/passkeys/page.tsx"), "// custom\n")
+      runCli(["init", dir, "--no-src", "--force"])
+      expect(readFileSync(join(dir, "app/account/passkeys/page.tsx"), "utf8")).toMatch(/PasskeyManagerPage/)
+    })
+  })
+
   // 0.5.0 — the old README told consumers to add an `auth:generate` script.
   // That script is now dead code (schema ships from
   // @naeemba/next-starter/schema). Detect and report; opt-in remove via

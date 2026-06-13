@@ -5,6 +5,7 @@ import { argv, cwd, exit, stdout } from "node:process"
 import {
   libAuth, libAuthClient, libAuthServer, dbSchemaReExport,
   drizzleConfig, authRoute, signInPage, envExample, proxyTemplate,
+  passkeyManagerPage,
 } from "./templates.mjs"
 
 function parseArgs(input) {
@@ -444,6 +445,11 @@ async function run() {
     ["starter",       join(target, `${prefix}app/sign-in/page.tsx`),              signInPage({ google: args.google, passkey: args.passkey })],
   ]
   if (args.proxy && !proxySkipReason) files.push(["consumer-skip", join(target, "proxy.ts"), proxyTemplate])
+  // Passkey-management UI — only when passkey is enabled, otherwise the
+  // generated page would import a feature the consumer opted out of and
+  // 404 at runtime (the passkey-manager route exists, but addPasskey()
+  // would hit a server with no passkey plugin loaded).
+  if (args.passkey) files.push(["starter", join(target, `${prefix}app/account/passkeys/page.tsx`), passkeyManagerPage])
   if (!args.skipEnv) files.push(["starter", join(target, ".env.example"), envExample])
 
   for (const [kind, path, content] of files) {
