@@ -52,6 +52,17 @@ export function createDb(databaseUrl: string, opts: CreateDbOptions = {}): Db {
  * re-enable prepared statements against a transaction-pool pgBouncer in
  * prod with no boot-time signal. Fail loud instead.
  */
+function assertPositiveInteger(name: string, raw: string, footgun?: string): number {
+  const n = Number(raw)
+  if (!Number.isFinite(n) || n <= 0 || !Number.isInteger(n)) {
+    const note = footgun ? ` (${footgun})` : ""
+    throw new Error(
+      `[@naeemba/next-starter] ${name} must be a positive integer${note}, got: ${JSON.stringify(raw)}`,
+    )
+  }
+  return n
+}
+
 export function createDbOptionsFromEnv(
   source: Record<string, string | undefined> = process.env
 ): CreateDbOptions {
@@ -65,28 +76,18 @@ export function createDbOptionsFromEnv(
     opts.prepare = source.DATABASE_PREPARE === "true"
   }
   if (source.DATABASE_POOL_MAX !== undefined) {
-    const n = Number(source.DATABASE_POOL_MAX)
-    if (!Number.isFinite(n) || n <= 0 || !Number.isInteger(n)) {
-      throw new Error(
-        `[@naeemba/next-starter] DATABASE_POOL_MAX must be a positive integer, got: ${JSON.stringify(source.DATABASE_POOL_MAX)}`,
-      )
-    }
-    opts.max = n
+    opts.max = assertPositiveInteger("DATABASE_POOL_MAX", source.DATABASE_POOL_MAX)
   }
   if (source.DATABASE_IDLE_TIMEOUT !== undefined) {
-    const n = Number(source.DATABASE_IDLE_TIMEOUT)
     // Rejecting 0 (not just negatives): postgres.js maps idle_timeout=0 to
     // "never close idle connections", which is the connection-leak mode
     // this env var exists to OVERRIDE. Accepting it would silently invert
     // the user's intent on a typo'd "disable" attempt.
-    if (!Number.isFinite(n) || n <= 0 || !Number.isInteger(n)) {
-      throw new Error(
-        `[@naeemba/next-starter] DATABASE_IDLE_TIMEOUT must be a positive integer ` +
-          `(postgres.js's '0 = no timeout' default is the connection-leak mode this var exists to override), ` +
-          `got: ${JSON.stringify(source.DATABASE_IDLE_TIMEOUT)}`,
-      )
-    }
-    opts.idleTimeout = n
+    opts.idleTimeout = assertPositiveInteger(
+      "DATABASE_IDLE_TIMEOUT",
+      source.DATABASE_IDLE_TIMEOUT,
+      "postgres.js's '0 = no timeout' default is the connection-leak mode this var exists to override",
+    )
   }
   return opts
 }
