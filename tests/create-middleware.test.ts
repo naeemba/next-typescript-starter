@@ -26,9 +26,21 @@ function makeReq(opts: {
   search?: string
   cookies?: Record<string, string>
   origin?: string
+  basePath?: string
 }) {
   const origin = opts.origin ?? "https://app.example.com"
   const url = new URL(`${origin}${opts.pathname}${opts.search ?? ""}`)
+  // Real NextURL exposes `basePath` and `clone()`; the stub provides both
+  // so the middleware's basePath-aware redirect path is exercised under test.
+  Object.defineProperty(url, "basePath", { value: opts.basePath ?? "", configurable: true })
+  Object.defineProperty(url, "clone", {
+    value: () => {
+      const cloned = new URL(url.toString())
+      Object.defineProperty(cloned, "basePath", { value: opts.basePath ?? "", configurable: true })
+      return cloned
+    },
+    configurable: true,
+  })
   return {
     nextUrl: url,
     url: url.toString(),
@@ -174,12 +186,15 @@ describe("createMiddleware", () => {
     )
   })
 
-  // trailingSlash:true in next.config.js makes Next normalize URLs to
-  // `/sign-in/`. The boot-time guard has to catch this shape too, or the
-  // consumer ships the loop they thought was already prevented.
-  it("throws when protect matches the trailing-slash variant of signInPath", async () => {
+  // `/sign-in/*` is a legitimate way to protect sub-routes under the
+  // sign-in path (e.g. /sign-in/forgot-password). It matches /sign-in/
+  // but not the bare /sign-in that the unauthenticated redirect targets,
+  // so it cannot actually loop — the runtime short-circuit below covers
+  // the trailingSlash:true /sign-in/ case. The earlier boot guard
+  // rejected this as a false positive; the narrowed guard accepts it.
+  it("does NOT throw when protect uses `/sign-in/*` (matches sub-paths, not bare signInPath)", async () => {
     const { createMiddleware } = await import("../src/middleware/index.js")
-    expect(() => createMiddleware({ protect: ["/sign-in/"] })).toThrow(/infinite redirect loop/)
+    expect(() => createMiddleware({ protect: ["/sign-in/*"] })).not.toThrow()
   })
 
   // Defense-in-depth: even if a consumer rewrite layer hands us a
@@ -189,5 +204,41 @@ describe("createMiddleware", () => {
     const { createMiddleware } = await import("../src/middleware/index.js")
     const mw = createMiddleware({ protect: ["/admin/:path*"] })
     expect(mw(makeReq({ pathname: "/sign-in/" }) as unknown as Parameters<typeof mw>[0])).toEqual({ type: "next" })
+  })
+
+  // Path-to-regexp's `?` (optional) and `+` (one-or-more) modifiers are
+  // familiar to Next.js consumers, but we don't compile them — silently
+  // escaping the trailing punctuation as a literal would produce a regex
+  // that matches nothing, so the `protect` pattern would let
+  // unauthenticated traffic past. Refuse loudly at construction instead.
+  it("throws at construction on unsupported `:name?` modifier", async () => {
+    const { createMiddleware } = await import("../src/middleware/index.js")
+    expect(() => createMiddleware({ protect: ["/admin/:path?"] })).toThrow(/unsupported modifier/)
+  })
+
+  it("throws at construction on unsupported `:name+` modifier", async () => {
+    const { createMiddleware } = await import("../src/middleware/index.js")
+    expect(() => createMiddleware({ protect: ["/admin/:path+"] })).toThrow(/unsupported modifier/)
+  })
+
+  // basePath: under `next.config.js: { basePath: '/app' }`, the request
+  // `nextUrl.pathname` is already basePath-stripped, but
+  // `NextResponse.redirect(absoluteURL)` does NOT re-prepend it. The
+  // helper has to thread basePath into BOTH the redirect target and the
+  // callbackUrl so the post-sign-in roundtrip lands at the right URL.
+  it("preserves nextUrl.basePath in redirect target and callbackUrl", async () => {
+    redirectCalls.length = 0
+    const { createMiddleware } = await import("../src/middleware/index.js")
+    const mw = createMiddleware({ protect: ["/admin/:path*"] })
+    mw(
+      makeReq({
+        pathname: "/admin/users",
+        search: "?q=1",
+        basePath: "/app",
+      }) as unknown as Parameters<typeof mw>[0],
+    )
+    expect(redirectCalls).toHaveLength(1)
+    expect(redirectCalls[0]!.pathname).toBe("/app/sign-in")
+    expect(redirectCalls[0]!.searchParams.get("callbackUrl")).toBe("/app/admin/users?q=1")
   })
 })

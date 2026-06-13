@@ -20,7 +20,12 @@ export interface CreateMiddlewareOptions {
   cookiePrefix?: string
 }
 
-const SEGMENT_RE = /:[a-zA-Z_][a-zA-Z0-9_]*\*?|\*\*|\*/g
+// Captures `:name`, `:name*`, `**`, and `*`. Trailing `?` / `+` would be
+// path-to-regexp modifiers (familiar to Next.js users) — we don't support them,
+// so they're matched as a separate "unsupported" token below and rejected loudly
+// instead of escaping into the literal regex (which silently produces patterns
+// that match nothing and let unauthenticated traffic through).
+const SEGMENT_RE = /:[a-zA-Z_][a-zA-Z0-9_]*[?+]|:[a-zA-Z_][a-zA-Z0-9_]*\*?|\*\*|\*/g
 
 function compile(pattern: string): RegExp {
   const tokens: Array<{ start: number; end: number; replacement: string }> = []
@@ -41,6 +46,16 @@ function compile(pattern: string): RegExp {
       }
     } else if (raw === "*") {
       replacement = "[^/]*"
+    } else if (raw.endsWith("?") || raw.endsWith("+")) {
+      // path-to-regexp modifiers we do not support. Falling through to
+      // `escapeRegex` would literalize the `?`/`+` and silently match
+      // nothing, letting unauthenticated traffic past `protect`. Refuse
+      // at construction so the consumer notices instead.
+      throw new Error(
+        `[@naeemba/next-starter] createMiddleware: pattern '${pattern}' uses unsupported modifier ` +
+          `'${raw}'. Supported segments are :name, :name*, *, and **. Drop the trailing '${raw.slice(-1)}' ` +
+          `or rewrite the route (e.g. '/admin/:path*').`,
+      )
     } else if (raw.endsWith("*")) {
       // `:name*` should match zero or more segments. Same logic as `**`.
       if (precededBySlash) {
@@ -81,20 +96,16 @@ export function createMiddleware(opts: CreateMiddlewareOptions) {
   const cookieNames = [`${cookiePrefix}.session_token`, `__Secure-${cookiePrefix}.session_token`]
   const compiled = opts.protect.map((p) => compile(p))
 
-  // Fail loud at construction when a `protect` pattern matches `signInPath`
-  // — that combination would deterministically loop the unauthenticated
-  // redirect. Trailing-slash variants are normalized so this also catches
-  // misconfigurations under `next.config.js: { trailingSlash: true }`.
-  // The runtime short-circuit below stays as a defense-in-depth fallback,
-  // but the boot-time error is the real fix: it surfaces the misconfig in
-  // the consumer's logs at module load instead of as a browser redirect loop.
-  // Probe both trailing-slash variants — that covers every shape of
-  // `signInPath` (`/sign-in`, `/sign-in/`, or any custom path with or
-  // without a trailing slash) without re-probing the same string twice.
+  // Fail loud at construction when a `protect` pattern matches the bare
+  // `signInPath` — that combination would deterministically loop the
+  // unauthenticated redirect. We DON'T also probe the trailing-slash variant:
+  //   pattern `/sign-in/*` (a legitimate way to protect sub-routes like
+  //   `/sign-in/forgot-password`) matches `/sign-in/` but not `/sign-in`,
+  //   and a request to `/sign-in/` is short-circuited at runtime below
+  //   before the protect check runs. Probing the trailing variant here
+  //   would reject that pattern as a false positive.
   const signInPathNoSlash = signInPath.replace(/\/+$/, "")
-  const matchesSignIn = (re: RegExp) =>
-    re.test(signInPathNoSlash) || re.test(`${signInPathNoSlash}/`)
-  const offending = opts.protect.find((_p, i) => matchesSignIn(compiled[i]!))
+  const offending = opts.protect.find((_p, i) => compiled[i]!.test(signInPathNoSlash))
   if (offending !== undefined) {
     throw new Error(
       `[@naeemba/next-starter] createMiddleware: 'protect' pattern '${offending}' matches signInPath ` +
@@ -117,8 +128,17 @@ export function createMiddleware(opts: CreateMiddlewareOptions) {
     const hasSession = cookieNames.some((name) => Boolean(req.cookies.get(name)?.value))
     if (hasSession) return NextResponse.next()
 
-    const target = new URL(signInPath, req.nextUrl.origin)
-    target.searchParams.set(callbackParam, pathname + req.nextUrl.search)
+    // `req.nextUrl.basePath` is "" unless the consumer set `basePath` in
+    // next.config.js — in which case `pathname` here is already basePath-
+    // stripped, and `NextResponse.redirect(absoluteURL)` does NOT re-prepend
+    // it. Cloning and assigning a basePath-prefixed pathname is what makes
+    // the redirect (and the callbackUrl roundtrip) resolve correctly on
+    // sub-path deployments.
+    const basePath = req.nextUrl.basePath
+    const target = req.nextUrl.clone()
+    target.pathname = basePath + signInPath
+    target.search = ""
+    target.searchParams.set(callbackParam, basePath + pathname + req.nextUrl.search)
     return NextResponse.redirect(target)
   }
 }
