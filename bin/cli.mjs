@@ -264,14 +264,40 @@ async function removeObsoleteScripts(target, obsolete) {
   await writeFile(pkgPath, JSON.stringify(pkg, null, 2) + trailingNewline, "utf8")
 }
 
+// Parse the comma-separated symbol list inside an `export { ... }` clause
+// into a normalized set of local names (the part after `as` if present).
+// Whitespace and stray commas are tolerated.
+function parseSymbolList(raw) {
+  const out = new Set()
+  for (const part of raw.split(",")) {
+    const trimmed = part.trim()
+    if (!trimmed) continue
+    // Strip leading `type ` modifier and resolve `X as Y` to `Y`.
+    const noType = trimmed.replace(/^type\s+/, "")
+    const asMatch = noType.match(/^\S+\s+as\s+(\S+)$/)
+    out.add(asMatch ? asMatch[1] : noType)
+  }
+  return out
+}
+
+function sameSymbolSet(a, b) {
+  if (a.size !== b.size) return false
+  for (const v of a) if (!b.has(v)) return false
+  return true
+}
+
 // File classification for write strategy:
 // - "starter":       starter owns this. Skip if exists; overwrite with --force.
 // - "schema-merge":  consumer-owned with a required re-export from
 //                    @naeemba/next-starter/schema. If file exists and the
-//                    re-export is already present, leave it alone. If file
-//                    exists but the re-export is missing, prepend the line
-//                    (preserving the consumer's tables). If file doesn't
-//                    exist, scaffold the one-line shim.
+//                    re-export is already present AND its symbol set matches
+//                    what the CLI wants to emit, leave it alone. If the
+//                    symbol set diverges (e.g. consumer first ran with
+//                    --no-passkey then re-ran with default --passkey),
+//                    rewrite the re-export line in place — consumer tables
+//                    untouched. If the re-export is missing entirely,
+//                    prepend the line. If the file doesn't exist, scaffold
+//                    the one-line shim.
 //                    --force does NOT replace this file. Destroying the
 //                    consumer's table definitions was the v0.4 footgun
 //                    this classification exists to close.
@@ -284,15 +310,34 @@ async function writeFileSafe(kind, path, content, force, status) {
   if (kind === "schema-merge") {
     if (await exists(path)) {
       const existing = await readFile(path, "utf8")
-      if (existing.includes("@naeemba/next-starter/schema")) {
-        status.skipped.push({ path, note: "re-export already present" })
+      // Detect a pre-existing re-export from @naeemba/next-starter/schema
+      // and compare its symbol set against the one the CLI wants to emit.
+      // A substring-only check leaves the consumer with a stale set when
+      // they flip `--passkey` between runs: `lib/auth.ts` would carry the
+      // passkey block while `db/schema.ts` is missing the `passkey`
+      // re-export, and drizzle-kit fails with "Could not find table".
+      const reExportRegex = /^[ \t]*export\s*\{([^}]+)\}\s*from\s*["']@naeemba\/next-starter\/schema["'][ \t]*;?[ \t]*\r?\n?/m
+      const existingMatch = existing.match(reExportRegex)
+      if (existingMatch) {
+        const existingSymbols = parseSymbolList(existingMatch[1])
+        const expectedSymbols = parseSymbolList(content.match(reExportRegex)?.[1] ?? "")
+        if (sameSymbolSet(existingSymbols, expectedSymbols)) {
+          status.skipped.push({ path, note: "re-export already present" })
+          return
+        }
+        // Symbol set diverges — replace just the re-export line, keep the
+        // rest of the consumer's file intact.
+        const reExportLine = content.match(reExportRegex)?.[0] ?? content
+        const merged = existing.replace(reExportRegex, reExportLine)
+        await writeFile(path, merged, "utf8")
+        status.merged.push({ path, note: "rewrote re-export line (symbol set changed)" })
         return
       }
       const reExport = content
       const sep = existing.startsWith("\n") ? "" : "\n"
       const merged = `${reExport}${sep}${existing}`
       await writeFile(path, merged, "utf8")
-      status.merged.push(path)
+      status.merged.push({ path, note: undefined })
       return
     }
     // No existing file — scaffold the one-line shim.
@@ -356,7 +401,7 @@ async function run() {
     created: [],
     overwritten: [],
     skipped: [],     // entries: { path, note? }
-    merged: [],
+    merged: [],     // entries: { path, note? }
     preserved: [],
   }
 
@@ -378,7 +423,10 @@ async function run() {
   const rel = (p) => relative(target, p) || "."
   for (const p of status.created)     stdout.write(`  + ${rel(p)}\n`)
   for (const p of status.overwritten) stdout.write(`  ! ${rel(p)}  (overwritten)\n`)
-  for (const p of status.merged)      stdout.write(`  ~ ${rel(p)}  (merged: prepended @naeemba/next-starter/schema re-export)\n`)
+  for (const entry of status.merged) {
+    const note = entry.note ?? "prepended @naeemba/next-starter/schema re-export"
+    stdout.write(`  ~ ${rel(entry.path)}  (merged: ${note})\n`)
+  }
   for (const p of status.preserved)   stdout.write(`  = ${rel(p)}  (exists, consumer-owned — not overwritten)\n`)
   for (const entry of status.skipped) {
     const note = entry.note ? ` (${entry.note})` : "  (exists, use --force to overwrite)"

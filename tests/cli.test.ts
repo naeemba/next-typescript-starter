@@ -421,6 +421,50 @@ describe("next-starter init", () => {
       const schema = readFileSync(join(dir, "db/schema.ts"), "utf8")
       expect(schema).toMatch(/export \{[^}]*\} from "@naeemba\/next-starter\/schema"/)
     })
+
+    // Schema-merge drift: if the consumer ran `init --no-passkey` first
+    // (re-export omits `passkey`) and later re-runs without that flag
+    // (default `--passkey`), `lib/auth.ts` carries the passkey block
+    // but db/schema.ts would otherwise still be missing the `passkey`
+    // re-export — drizzle-kit fails with "Could not find table". The CLI
+    // must rewrite the re-export line in place when symbol sets diverge.
+    it("rewrites the re-export line when symbol set diverges (no-passkey -> passkey)", () => {
+      const existing =
+        `export { user, session, account, verification } from "@naeemba/next-starter/schema"\n\n` +
+        `import { pgTable, serial, text } from "drizzle-orm/pg-core"\n` +
+        `export const blogPosts = pgTable("blog_posts", {\n` +
+        `  id: serial("id").primaryKey(),\n` +
+        `  title: text("title").notNull(),\n` +
+        `})\n`
+      mkdirSync(join(dir, "db"), { recursive: true })
+      writeFileSync(join(dir, "db/schema.ts"), existing)
+      const { code, stdout } = runCli(["init", dir, "--no-src"])
+      expect(code).toBe(0)
+      const merged = readFileSync(join(dir, "db/schema.ts"), "utf8")
+      // The re-export now carries `passkey` (default --passkey)
+      expect(merged).toMatch(/user, session, account, verification, passkey/)
+      // The consumer's table is still there
+      expect(merged).toMatch(/export const blogPosts = pgTable/)
+      // Output flagged the merge with the symbol-set-changed note
+      expect(stdout).toMatch(/db\/schema\.ts.*merged/)
+      expect(stdout).toMatch(/symbol set changed/)
+    })
+
+    // Inverse drift: previously --passkey, now --no-passkey. Less harmful
+    // (extra re-export is benign at runtime) but keeping schema in sync
+    // with the generated lib/auth.ts avoids reader confusion and stops
+    // drizzle-kit from migrating a passkey table for a consumer that
+    // opted out.
+    it("rewrites the re-export line when symbol set diverges (passkey -> no-passkey)", () => {
+      const existing =
+        `export { user, session, account, verification, passkey } from "@naeemba/next-starter/schema"\n`
+      mkdirSync(join(dir, "db"), { recursive: true })
+      writeFileSync(join(dir, "db/schema.ts"), existing)
+      runCli(["init", dir, "--no-src", "--no-passkey"])
+      const merged = readFileSync(join(dir, "db/schema.ts"), "utf8")
+      expect(merged).toMatch(/user, session, account, verification/)
+      expect(merged).not.toMatch(/passkey/)
+    })
   })
 
   // 0.5.0 — drizzle.config.ts is consumer-owned (e.g. verbose, casing,
