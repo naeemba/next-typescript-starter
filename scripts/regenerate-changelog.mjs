@@ -38,7 +38,11 @@ if (!existsSync(BIN)) {
 
 const original = await readFile(CHANGELOG_PATH, "utf8")
 const firstReleaseHeading = original.search(/^## /m)
-const header = firstReleaseHeading >= 0 ? original.slice(0, firstReleaseHeading) : ""
+// First release ever: no `## ` heading exists yet, so the whole file is
+// header/intro. Preserve it as `header` and hand conventional-changelog an
+// empty body so it can prepend the freshly generated entry without
+// discarding the intro paragraph on the next writeFile.
+const header = firstReleaseHeading >= 0 ? original.slice(0, firstReleaseHeading) : original
 const body = firstReleaseHeading >= 0 ? original.slice(firstReleaseHeading) : ""
 
 try {
