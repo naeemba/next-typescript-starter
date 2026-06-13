@@ -651,6 +651,39 @@ describe("next-starter init", () => {
     })
   })
 
+  // 0.6.0 — scaffold app/sign-in/error/page.tsx so better-auth's magic-link
+  // verify errors land on friendly copy instead of better-auth's default
+  // JSON 400. The scaffolded sign-in/page.tsx sets errorCallbackUrl to
+  // "/sign-in/error" so the redirect flow is wired automatically.
+  describe("sign-in error page scaffold", () => {
+    it("writes app/sign-in/error/page.tsx wired to SignInErrorPage", () => {
+      runCli(["init", dir])
+      const path = join(dir, "app/sign-in/error/page.tsx")
+      expect(existsSync(path)).toBe(true)
+      const page = readFileSync(path, "utf8")
+      expect(page).toMatch(/SignInErrorPage/)
+      expect(page).toMatch(/from "@naeemba\/next-starter\/pages\/sign-in"/)
+    })
+
+    it("scaffolded sign-in page sets errorCallbackUrl='/sign-in/error'", () => {
+      runCli(["init", dir])
+      const page = readFileSync(join(dir, "app/sign-in/page.tsx"), "utf8")
+      expect(page).toMatch(/errorCallbackUrl="\/sign-in\/error"/)
+    })
+
+    it("--src writes the error page under src/", () => {
+      runCli(["init", dir, "--src"])
+      expect(existsSync(join(dir, "src/app/sign-in/error/page.tsx"))).toBe(true)
+    })
+
+    it("skips an existing error page without --force", () => {
+      runCli(["init", dir, "--no-src"])
+      writeFileSync(join(dir, "app/sign-in/error/page.tsx"), "// custom\n")
+      runCli(["init", dir, "--no-src"])
+      expect(readFileSync(join(dir, "app/sign-in/error/page.tsx"), "utf8")).toBe("// custom\n")
+    })
+  })
+
   // 0.6.0 — scaffold a passkey-management UI when passkey is enabled. A
   // fresh consumer running `init` with the default --passkey gets an
   // app/account/passkeys/page.tsx so users can register a key without the

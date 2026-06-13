@@ -78,6 +78,14 @@ export interface SignInFormProps {
    * Defaults to `"callbackUrl"` to match `createProxy`'s default.
    */
   callbackParam?: string
+  /**
+   * Path to redirect to when the magic-link verify endpoint fails (expired
+   * token, used token, etc). Better-auth's magic-link plugin appends
+   * `?error=<code>` to this URL; pair with `<SignInErrorPage/>` for friendly
+   * copy. When unset (the default), better-auth returns a JSON 400 response
+   * with no redirect — the user sees the raw error in the address bar.
+   */
+  errorCallbackUrl?: string
 
   /** Show "Continue with Google" button. */
   google?: boolean | { label?: ReactNode }
@@ -143,6 +151,7 @@ export function SignInForm(props: SignInFormProps) {
     authClient,
     callbackUrl,
     callbackParam = "callbackUrl",
+    errorCallbackUrl,
     google,
     passkey,
     magicLink = true,
@@ -203,7 +212,12 @@ export function SignInForm(props: SignInFormProps) {
     const callbackURL = resolveCallbackUrl(callbackParam, callbackUrl)
     await runAttempt(
       "magicLink",
-      () => authClient.signIn.magicLink({ email, callbackURL }),
+      () =>
+        authClient.signIn.magicLink({
+          email,
+          callbackURL,
+          ...(errorCallbackUrl ? { errorCallbackURL: errorCallbackUrl } : {}),
+        }),
       () => onSent?.(email),
     )
   }

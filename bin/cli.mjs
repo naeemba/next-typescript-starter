@@ -5,7 +5,7 @@ import { argv, cwd, exit, stdout } from "node:process"
 import {
   libAuth, libAuthClient, libAuthServer, dbSchemaReExport,
   drizzleConfig, authRoute, signInPage, envExample, proxyTemplate,
-  passkeyManagerPage,
+  passkeyManagerPage, signInErrorPage,
 } from "./templates.mjs"
 
 function parseArgs(input) {
@@ -443,6 +443,7 @@ async function run() {
     ["consumer-skip", join(target, `drizzle.config.ts`),                          drizzleConfig({ src: useSrc })],
     ["starter",       join(target, `${prefix}app/api/auth/[...all]/route.ts`),    authRoute],
     ["starter",       join(target, `${prefix}app/sign-in/page.tsx`),              signInPage({ google: args.google, passkey: args.passkey })],
+    ["starter",       join(target, `${prefix}app/sign-in/error/page.tsx`),        signInErrorPage],
   ]
   if (args.proxy && !proxySkipReason) files.push(["consumer-skip", join(target, "proxy.ts"), proxyTemplate])
   // Passkey-management UI — only when passkey is enabled, otherwise the

@@ -78,7 +78,22 @@ export const signInPage = ({ google, passkey }) => `import { SignInPage } from "
 import { authClient } from "@/lib/auth-client"
 
 export default function Page() {
-  return <SignInPage authClient={authClient}${google ? " google" : ""}${passkey ? " passkey" : ""} />
+  return (
+    <SignInPage
+      authClient={authClient}
+      errorCallbackUrl="/sign-in/error"${google ? "\n      google" : ""}${passkey ? "\n      passkey" : ""}
+    />
+  )
+}
+`
+
+// Minimal /sign-in/error page that turns better-auth's magic-link verify
+// errors (?error=EXPIRED_TOKEN, etc) into user-facing copy. Paired with
+// the signInPage scaffold above which sets errorCallbackUrl="/sign-in/error".
+export const signInErrorPage = `import { SignInErrorPage } from "@naeemba/next-starter/pages/sign-in"
+
+export default function Page() {
+  return <SignInErrorPage />
 }
 `
 
