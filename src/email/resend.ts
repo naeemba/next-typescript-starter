@@ -10,7 +10,7 @@ function getClient(): ResendType {
   if (!key) {
     throw new Error("[@naeemba/next-starter] RESEND_API_KEY is required to use the Resend transport.")
   }
-  const { Resend } = loadOptionalPeer<typeof import("resend")>("resend", "the Resend email transport (set RESEND_API_KEY)")
+  const { Resend } = loadOptionalPeer<typeof import("resend")>("resend", "the Resend email transport")
   _client = new Resend(key)
   return _client
 }

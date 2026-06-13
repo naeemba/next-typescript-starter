@@ -54,6 +54,11 @@ export function loadOptionalPeer<T>(name: string, usedBy: string): T {
  * literal dynamic-import expression stays at the call site so bundlers
  * (tsup, esbuild) can analyze it statically; this helper only wraps the
  * error path with the same instructional message as `loadOptionalPeer`.
+ *
+ * No CWD fallback: dynamic `import()` is resolved by the caller's bundler
+ * (or by Node's ESM loader against the caller's module URL), not via
+ * `createRequire`, so the Turbopack-virtualized-URL miss that `loadOptionalPeer`
+ * works around cannot happen here. Do NOT add one for symmetry.
  */
 export async function loadOptionalPeerAsync<T>(
   name: string,

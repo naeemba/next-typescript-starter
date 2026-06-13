@@ -20,7 +20,8 @@ const EnvSchema = z.object({
   GOOGLE_CLIENT_SECRET: z.string().optional(),
   // DATABASE_PREPARE / DATABASE_POOL_MAX / DATABASE_IDLE_TIMEOUT are validated
   // by createDbOptionsFromEnv (src/db/index.ts), the single reader for those
-  // vars. Keeping a parallel Zod entry here lets the two definitions drift.
+  // vars. Do NOT add a parallel Zod entry here — it would let the two
+  // definitions drift.
 })
 
 export type Env = z.infer<typeof EnvSchema>
