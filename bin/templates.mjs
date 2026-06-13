@@ -112,11 +112,19 @@ export default function Page() {
 // Consumers needing host canonicalization, geo gating, or A/B routing should
 // switch to a custom proxy.ts using the re-exported `getSessionCookie` from
 // `@naeemba/next-starter/proxy` — see the README's "Custom proxy.ts" section.
+//
+// Matcher is intentionally broad — it mirrors create-next-app's default
+// exclusion plus our `/api/auth/` carve-out, so consumers who extend
+// `protect` to cover more routes don't accidentally re-run cookie parsing
+// on every static asset (`robots.txt`, `*.png`, etc) or every `/api/*`
+// route. For the as-scaffolded `/admin/:path*` protect alone, the cheaper
+// shape is `[\"/admin/:path*\"]`, but the broad form is friendlier for the
+// scaffold-then-edit flow.
 export const proxyTemplate = `import { createProxy } from "@naeemba/next-starter/proxy"
 
 export default createProxy({ protect: ["/admin/:path*"] })
 
-export const config = { matcher: ["/((?!_next/|favicon.ico|api/auth/).*)"] }
+export const config = { matcher: ["/((?!_next/static|_next/image|favicon.ico|api/auth/).*)"] }
 `
 
 export const envExample = `DATABASE_URL=postgres://user:pass@host:5432/db
