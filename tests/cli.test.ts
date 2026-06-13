@@ -234,6 +234,30 @@ describe("next-starter init", () => {
     expect(existsSync(join(dir, "lib/auth.ts"))).toBe(false)
   })
 
+  // Regression: a post-walk regex stripped `,}` / `,]` even inside string
+  // values, so a path value containing `,}` failed JSON.parse and made
+  // detectSrcLayout fall through to the false-positive warning path. The
+  // trailing-comma cleanup now happens inside the same string-aware walk.
+  it("preserves `,}` / `,]` inside JSONC string values when parsing tsconfig", () => {
+    writeFileSync(
+      join(dir, "tsconfig.json"),
+      `{
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": { "@/*": ["./src/*"] }
+  },
+  "scratch1": "value-with-,}-inside",
+  "scratch2": "value-with-, ]-inside"
+}
+`,
+    )
+    const { code, stdout } = runCli(["init", dir])
+    expect(code).toBe(0)
+    // The src/ layout would only resolve if the JSONC parse succeeded.
+    expect(existsSync(join(dir, "src/lib/auth.ts"))).toBe(true)
+    expect(stdout).not.toMatch(/paths.*"@\/\*"/)
+  })
+
   // Turborepo / Nx / create-turbo emit `"paths": { "@/*": ["src/*"] }` with
   // no leading `./`. The bare-segment branch in detectSrcLayout has to accept
   // that shape or the CLI writes lib/auth.ts at the project root in a real

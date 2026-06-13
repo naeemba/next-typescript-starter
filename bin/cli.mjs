@@ -70,10 +70,12 @@ async function exists(path) {
 // both before JSON.parse so detection doesn't silently fall through.
 //
 // Walk character-by-character tracking string context so we never strip
-// `//` or `/* */` that appear inside string values. A regex-only stripper
-// (the previous implementation) clobbered legitimate `//-disabled` keys
-// and any value containing `//`, which silently failed JSON.parse and
-// emitted the misleading `@/*`-paths-missing warning.
+// `//` or `/* */` that appear inside string values, AND so the
+// trailing-comma cleanup never fires inside a string value containing
+// `,}` / `,]`. A regex-only post-pass (the previous implementation)
+// clobbered legitimate `//-disabled` keys and string values with `,}`,
+// silently failing JSON.parse and emitting the misleading
+// `@/*`-paths-missing warning.
 function parseJsonc(raw) {
   let out = ""
   let i = 0
@@ -102,10 +104,36 @@ function parseJsonc(raw) {
       i += 2
       continue
     }
+    if (c === ",") {
+      // Drop a trailing comma if the next non-whitespace/non-comment char
+      // is `}` or `]`. The lookahead skips the same syntactic noise the
+      // outer loop would skip, so `, /* x */ ]` is treated like `,]`.
+      let j = i + 1
+      while (j < n) {
+        const d = raw[j]
+        if (d === " " || d === "\t" || d === "\n" || d === "\r") { j++; continue }
+        if (d === "/" && raw[j + 1] === "/") {
+          j += 2
+          while (j < n && raw[j] !== "\n") j++
+          continue
+        }
+        if (d === "/" && raw[j + 1] === "*") {
+          j += 2
+          while (j < n && !(raw[j] === "*" && raw[j + 1] === "/")) j++
+          j += 2
+          continue
+        }
+        break
+      }
+      if (raw[j] === "}" || raw[j] === "]") {
+        i++
+        continue
+      }
+    }
     out += c
     i++
   }
-  return JSON.parse(out.replace(/,(\s*[}\]])/g, "$1"))
+  return JSON.parse(out)
 }
 
 async function readTsconfigAt(path) {
