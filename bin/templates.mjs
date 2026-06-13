@@ -5,7 +5,10 @@
 export const libAuth = ({ google, passkey, db }) => `${db ? `import { db } from "@/db"
 ` : ""}import { createAuth } from "@naeemba/next-starter/auth"
 
-export const auth = createAuth({${db ? `
+// createAuth is async because optional ESM-only peers (e.g. @better-auth/passkey)
+// must be loaded via dynamic import(). Top-level await is fine in Next 16
+// server modules — \`auth\` is a resolved \`Auth\` instance to downstream importers.
+export const auth = await createAuth({${db ? `
   db,` : ""}${google ? `
   google: {
     // GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET read from process.env by default.

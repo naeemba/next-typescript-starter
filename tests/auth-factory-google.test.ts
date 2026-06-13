@@ -33,8 +33,8 @@ type AuthOpts = {
 const opts = (auth: unknown) => authOpts<AuthOpts>(auth)
 
 describe("createAuth({ google })", () => {
-  it("wires the google socialProvider when clientId/Secret are passed as opts", () => {
-    const auth = createAuth({
+  it("wires the google socialProvider when clientId/Secret are passed as opts", async () => {
+    const auth = await createAuth({
       db: {} as never,
       google: { clientId: "id-from-opts", clientSecret: "secret-from-opts" },
     })
@@ -42,28 +42,28 @@ describe("createAuth({ google })", () => {
     expect(opts(auth).socialProviders?.google?.clientSecret).toBe("secret-from-opts")
   })
 
-  it("falls back to GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET from env when opts omit them", () => {
+  it("falls back to GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET from env when opts omit them", async () => {
     process.env.GOOGLE_CLIENT_ID = "id-from-env"
     process.env.GOOGLE_CLIENT_SECRET = "secret-from-env"
-    const auth = createAuth({ db: {} as never, google: {} })
+    const auth = await createAuth({ db: {} as never, google: {} })
     expect(opts(auth).socialProviders?.google?.clientId).toBe("id-from-env")
     expect(opts(auth).socialProviders?.google?.clientSecret).toBe("secret-from-env")
   })
 
-  it("throws if google is enabled but no clientId/Secret resolvable", () => {
-    expect(() => createAuth({ db: {} as never, google: {} })).toThrow(/GOOGLE_CLIENT_ID/)
+  it("throws if google is enabled but no clientId/Secret resolvable", async () => {
+    await expect(createAuth({ db: {} as never, google: {} })).rejects.toThrow(/GOOGLE_CLIENT_ID/)
   })
 
-  it("forwards opts.google.scopes as socialProviders.google.scopes", () => {
-    const auth = createAuth({
+  it("forwards opts.google.scopes as socialProviders.google.scopes", async () => {
+    const auth = await createAuth({
       db: {} as never,
       google: { clientId: "x", clientSecret: "y", scopes: ["email", "profile", "openid"] },
     })
     expect(opts(auth).socialProviders?.google?.scopes).toEqual(["email", "profile", "openid"])
   })
 
-  it("enables accountLinking with google in trustedProviders by default when google is set", () => {
-    const auth = createAuth({
+  it("enables accountLinking with google in trustedProviders by default when google is set", async () => {
+    const auth = await createAuth({
       db: {} as never,
       google: { clientId: "x", clientSecret: "y" },
     })
@@ -71,13 +71,13 @@ describe("createAuth({ google })", () => {
     expect(opts(auth).account?.accountLinking?.trustedProviders).toContain("google")
   })
 
-  it("does NOT configure accountLinking when google is omitted", () => {
-    const auth = createAuth({ db: {} as never })
+  it("does NOT configure accountLinking when google is omitted", async () => {
+    const auth = await createAuth({ db: {} as never })
     expect(opts(auth).account?.accountLinking).toBeUndefined()
   })
 
-  it("disables accountLinking when explicitly set to false", () => {
-    const auth = createAuth({
+  it("disables accountLinking when explicitly set to false", async () => {
+    const auth = await createAuth({
       db: {} as never,
       google: { clientId: "x", clientSecret: "y" },
       accountLinking: false,
@@ -85,8 +85,8 @@ describe("createAuth({ google })", () => {
     expect(opts(auth).account?.accountLinking).toBeUndefined()
   })
 
-  it("respects a custom trustedProviders list (with google auto-merged)", () => {
-    const auth = createAuth({
+  it("respects a custom trustedProviders list (with google auto-merged)", async () => {
+    const auth = await createAuth({
       db: {} as never,
       google: { clientId: "x", clientSecret: "y" },
       accountLinking: { trustedProviders: ["github"] },
@@ -94,8 +94,8 @@ describe("createAuth({ google })", () => {
     expect(opts(auth).account?.accountLinking?.trustedProviders).toEqual(["github", "google"])
   })
 
-  it("preserves the order when google is already in trustedProviders", () => {
-    const auth = createAuth({
+  it("preserves the order when google is already in trustedProviders", async () => {
+    const auth = await createAuth({
       db: {} as never,
       google: { clientId: "x", clientSecret: "y" },
       accountLinking: { trustedProviders: ["google", "github"] },
@@ -103,8 +103,8 @@ describe("createAuth({ google })", () => {
     expect(opts(auth).account?.accountLinking?.trustedProviders).toEqual(["google", "github"])
   })
 
-  it("wires accountLinking even when google is omitted (for later provider additions)", () => {
-    const auth = createAuth({
+  it("wires accountLinking even when google is omitted (for later provider additions)", async () => {
+    const auth = await createAuth({
       db: {} as never,
       accountLinking: { trustedProviders: ["github"] },
     })
@@ -114,7 +114,7 @@ describe("createAuth({ google })", () => {
 
   it("wires google.allowlist as socialProviders.google.mapProfileToUser", async () => {
     const seen: Array<{ email: string; emailVerified: boolean }> = []
-    const auth = createAuth({
+    const auth = await createAuth({
       db: {} as never,
       google: {
         clientId: "x",
@@ -136,8 +136,8 @@ describe("createAuth({ google })", () => {
     ).rejects.toThrow(/google\.allowlist/)
   })
 
-  it("does NOT wire a global databaseHooks.user.create.before hook for google.allowlist", () => {
-    const auth = createAuth({
+  it("does NOT wire a global databaseHooks.user.create.before hook for google.allowlist", async () => {
+    const auth = await createAuth({
       db: {} as never,
       google: {
         clientId: "x",
@@ -154,12 +154,12 @@ describe("createAuth({ google })", () => {
   // opts.db path. parseEnv rejects non-postgres URLs, so without the placeholder
   // override `createAuth({ db, google: {...} })` would fail for a consumer
   // using a different driver but who still has DATABASE_URL set.
-  it("ignores a non-postgres process.env.DATABASE_URL when opts.db is provided", () => {
+  it("ignores a non-postgres process.env.DATABASE_URL when opts.db is provided", async () => {
     process.env.DATABASE_URL = "mysql://x:y@localhost/z"
     process.env.GOOGLE_CLIENT_ID = "id"
     process.env.GOOGLE_CLIENT_SECRET = "secret"
-    expect(() =>
+    await expect(
       createAuth({ db: {} as never, google: {} }),
-    ).not.toThrow()
+    ).resolves.toBeDefined()
   })
 })

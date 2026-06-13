@@ -84,7 +84,7 @@ describe("createAuth({ transport })", () => {
     setupAuthEnv()
     const { createAuth } = await import("../src/auth/index")
     const transport = vi.fn(async () => undefined)
-    const auth = createAuth({ transport })
+    const auth = await createAuth({ transport })
     // Drill into the magic-link plugin instance and call its sendMagicLink.
     type PluginShape = {
       id?: string

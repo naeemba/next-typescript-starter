@@ -1,5 +1,28 @@
 # Upgrading
 
+## 0.6.x → 0.7.0
+
+### `createAuth` is now async
+
+`createAuth()` returns `Promise<Auth>` instead of `Auth`. The change is one line per call site:
+
+```diff
+- export const auth = createAuth({ /* ... */ })
++ export const auth = await createAuth({ /* ... */ })
+```
+
+This applies to `lib/auth.ts` (the only file most consumers touch). Downstream importers — `lib/auth-server.ts`, `app/api/auth/[...all]/route.ts`, anything calling `createAuthRoute(auth)` or `createServer(auth)` — do not change. Top-level await resolves at module init, so `auth` is an `Auth` instance to downstream code, not a `Promise<Auth>`.
+
+**Why.** `@better-auth/passkey` 1.6.x is ESM-only. A sync `require()` from a CJS context (or any code path Node treats as CJS) hits `ERR_REQUIRE_ESM`. The fix is to load the peer via `await import()`, which works for both CJS and ESM, but that bubbles up to the factory: `createAuth({ passkey })` now `await`s the peer load, so `createAuth` itself must be async.
+
+**Other factories are unchanged.** `createDb`, `createAuthClient`, `createProxy`, `createAuthRoute`, `createServer` stay sync. Only `createAuth` flips.
+
+**Top-level await in Next 16.** Next 16 server modules support top-level await. If you scaffolded an older app on a Next version that does not, upgrade Next first.
+
+### CLI scaffold
+
+`next-starter init` now emits `export const auth = await createAuth(...)`. Existing files are skipped without `--force`.
+
 ## 0.5.x → 0.6.0
 
 0.6.0 is fully additive — there are no breaking API changes. The notable behavior changes:

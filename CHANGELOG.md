@@ -2,6 +2,21 @@
 
 All notable changes to `@naeemba/next-starter`. Migration steps live in [UPGRADING.md](./UPGRADING.md).
 
+## 0.7.0
+
+### Breaking
+
+- **`createAuth()` is now async.** Returns `Promise<Auth>` instead of `Auth`. Update call sites with one `await`:
+  ```diff
+  - export const auth = createAuth({ /* ... */ })
+  + export const auth = await createAuth({ /* ... */ })
+  ```
+  Reason: `@better-auth/passkey` 1.6.x is ESM-only, so the optional-peer load for passkey must use `await import()`. That bubbles up to the factory. Downstream importers (`createAuthRoute(auth)`, `createServer(auth)`) are unchanged — top-level await resolves `auth` to a plain `Auth` instance before downstream code runs.
+
+### Changed
+
+- CLI: `next-starter init` now scaffolds `export const auth = await createAuth(...)` in `lib/auth.ts`.
+
 ## [0.6.0](https://github.com/naeemba/next-typescript-starter/compare/v0.5.0...v0.6.0) (2026-06-13)
 
 ### Features

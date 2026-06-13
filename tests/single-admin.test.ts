@@ -26,21 +26,21 @@ describe("singleAdmin — invalid inputs", () => {
   // disable the allowlist and open sign-in to everyone. Fail loud instead.
   it("throws when the string form is empty / whitespace", async () => {
     const { createAuth } = await import("../src/auth/index.js")
-    expect(() => createAuth({ singleAdmin: "" })).toThrow(/no non-empty emails/)
-    expect(() => createAuth({ singleAdmin: "   " })).toThrow(/no non-empty emails/)
+    await expect(createAuth({ singleAdmin: "" })).rejects.toThrow(/no non-empty emails/)
+    await expect(createAuth({ singleAdmin: "   " })).rejects.toThrow(/no non-empty emails/)
   })
 
   it("throws when the array form is empty or only whitespace entries", async () => {
     const { createAuth } = await import("../src/auth/index.js")
-    expect(() => createAuth({ singleAdmin: [] })).toThrow(/no non-empty emails/)
-    expect(() => createAuth({ singleAdmin: ["", "  "] })).toThrow(/no non-empty emails/)
+    await expect(createAuth({ singleAdmin: [] })).rejects.toThrow(/no non-empty emails/)
+    await expect(createAuth({ singleAdmin: ["", "  "] })).rejects.toThrow(/no non-empty emails/)
   })
 })
 
 describe("singleAdmin — magic-link allowlist defaulting", () => {
   it("string form: allowed email triggers sendMagicLink, non-match is silently skipped", async () => {
     const { createAuth } = await import("../src/auth/index.js")
-    const auth = createAuth({ singleAdmin: "owner@example.com" })
+    const auth = await createAuth({ singleAdmin: "owner@example.com" })
     const ml = findPlugin(auth, "magic-link") as { options: { sendMagicLink: (a: { email: string; url: string }) => Promise<void> } } | undefined
     expect(ml?.options.sendMagicLink).toBeTypeOf("function")
     await ml!.options.sendMagicLink({ email: "OWNER@example.com", url: "https://app/x" })
@@ -51,7 +51,7 @@ describe("singleAdmin — magic-link allowlist defaulting", () => {
 
   it("array form: each listed email allowed, others blocked (case-insensitive)", async () => {
     const { createAuth } = await import("../src/auth/index.js")
-    const auth = createAuth({ singleAdmin: ["A@x.com", "B@x.com"] })
+    const auth = await createAuth({ singleAdmin: ["A@x.com", "B@x.com"] })
     const ml = findPlugin(auth, "magic-link") as { options: { sendMagicLink: (a: { email: string; url: string }) => Promise<void> } } | undefined
     await ml!.options.sendMagicLink({ email: "a@X.com", url: "u" })
     await ml!.options.sendMagicLink({ email: "b@x.com", url: "u" })
@@ -63,13 +63,13 @@ describe("singleAdmin — magic-link allowlist defaulting", () => {
 describe("singleAdmin — wired into createAuth", () => {
   it("magic-link plugin is registered even with only singleAdmin set", async () => {
     const { createAuth } = await import("../src/auth/index.js")
-    const auth = createAuth({ singleAdmin: "owner@example.com" })
+    const auth = await createAuth({ singleAdmin: "owner@example.com" })
     expect(findPlugin(auth, "magic-link")).toBeDefined()
   })
 
   it("google socialProvider is wired and gets a mapProfileToUser when singleAdmin is set", async () => {
     const { createAuth } = await import("../src/auth/index.js")
-    const auth = createAuth({
+    const auth = await createAuth({
       singleAdmin: "owner@example.com",
       google: {},
     })
@@ -88,7 +88,7 @@ describe("singleAdmin — wired into createAuth", () => {
   it("explicit magicLink.allowlist overrides singleAdmin for magic-link, but google still falls back to singleAdmin", async () => {
     const { createAuth } = await import("../src/auth/index.js")
     const explicitMagicLink = vi.fn((email: string) => email === "anyone@x.com")
-    const auth = createAuth({
+    const auth = await createAuth({
       singleAdmin: "owner@example.com",
       magicLink: { allowlist: explicitMagicLink },
       google: {},
@@ -108,7 +108,7 @@ describe("singleAdmin — wired into createAuth", () => {
   it("explicit google.allowlist overrides singleAdmin for google", async () => {
     const { createAuth } = await import("../src/auth/index.js")
     const explicit = vi.fn(async () => true)
-    const auth = createAuth({
+    const auth = await createAuth({
       singleAdmin: "owner@example.com",
       google: { allowlist: explicit },
     })
