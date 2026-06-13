@@ -221,6 +221,38 @@ describe("createMiddleware", () => {
     expect(() => createMiddleware({ protect: ["/admin/:path+"] })).toThrow(/unsupported modifier/)
   })
 
+  // Same auth-bypass class as the `:name?` case above but via the glob
+  // shape: `**?`, `**+`, `*?`, `*+`, `:name*?`, `:name*+`. Before SEGMENT_RE
+  // captured the modifier as part of the glob token, these tokenized as
+  // bare `**` / `*` / `:name*` followed by a literal `?`/`+` in the
+  // post-token escape path — producing a regex like `^/admin(?:/.*)?\?$`
+  // that matches no real pathname, so `/admin/...` requests would silently
+  // bypass `protect`.
+  it("throws at construction on `**?` (glob + ? modifier)", async () => {
+    const { createMiddleware } = await import("../src/middleware/index.js")
+    expect(() => createMiddleware({ protect: ["/admin/**?"] })).toThrow(/unsupported modifier/)
+  })
+  it("throws at construction on `**+` (glob + + modifier)", async () => {
+    const { createMiddleware } = await import("../src/middleware/index.js")
+    expect(() => createMiddleware({ protect: ["/admin/**+"] })).toThrow(/unsupported modifier/)
+  })
+  it("throws at construction on `*?` (single glob + ? modifier)", async () => {
+    const { createMiddleware } = await import("../src/middleware/index.js")
+    expect(() => createMiddleware({ protect: ["/admin/*?"] })).toThrow(/unsupported modifier/)
+  })
+  it("throws at construction on `*+` (single glob + + modifier)", async () => {
+    const { createMiddleware } = await import("../src/middleware/index.js")
+    expect(() => createMiddleware({ protect: ["/admin/*+"] })).toThrow(/unsupported modifier/)
+  })
+  it("throws at construction on `:name*?` (named glob + ? modifier)", async () => {
+    const { createMiddleware } = await import("../src/middleware/index.js")
+    expect(() => createMiddleware({ protect: ["/admin/:path*?"] })).toThrow(/unsupported modifier/)
+  })
+  it("throws at construction on `:name*+` (named glob + + modifier)", async () => {
+    const { createMiddleware } = await import("../src/middleware/index.js")
+    expect(() => createMiddleware({ protect: ["/admin/:path*+"] })).toThrow(/unsupported modifier/)
+  })
+
   // basePath: under `next.config.js: { basePath: '/app' }`, the request
   // `nextUrl.pathname` is already basePath-stripped, but
   // `NextResponse.redirect(absoluteURL)` does NOT re-prepend it. The

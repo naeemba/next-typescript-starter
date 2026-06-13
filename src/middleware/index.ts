@@ -20,12 +20,16 @@ export interface CreateMiddlewareOptions {
   cookiePrefix?: string
 }
 
-// Captures `:name`, `:name*`, `**`, and `*`. Trailing `?` / `+` would be
-// path-to-regexp modifiers (familiar to Next.js users) — we don't support them,
-// so they're matched as a separate "unsupported" token below and rejected loudly
-// instead of escaping into the literal regex (which silently produces patterns
-// that match nothing and let unauthenticated traffic through).
-const SEGMENT_RE = /:[a-zA-Z_][a-zA-Z0-9_]*[?+]|:[a-zA-Z_][a-zA-Z0-9_]*\*?|\*\*|\*/g
+// Captures `:name`, `:name*`, `**`, and `*`. Trailing `?` / `+` are
+// path-to-regexp modifiers (familiar to Next.js users) — we don't support them.
+// Crucially the `[?+]?` tail is on every alternative — bare `:name`, named
+// glob `:name*`, AND the standalone globs `**` / `*` — so a modifier on a
+// glob (`**?`, `*+`, `:path*?`, ...) is captured as part of the same token
+// and routed to the reject branch below. Without the glob+modifier tail,
+// `**?` would tokenize as `**` followed by a literal `?` in the post-token
+// text, producing a regex like `^/admin(?:/.*)?\?$` that matches no real
+// pathname — unauthenticated traffic would silently flow past the gate.
+const SEGMENT_RE = /:[a-zA-Z_][a-zA-Z0-9_]*\*?[?+]?|\*\*[?+]?|\*[?+]?/g
 
 function compile(pattern: string): RegExp {
   const tokens: Array<{ start: number; end: number; replacement: string }> = []
