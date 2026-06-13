@@ -53,6 +53,27 @@ describe("parseEnv", () => {
     expect(env.GOOGLE_CLIENT_SECRET).toBeUndefined()
   })
 
+  // CI platforms emitting `BETTER_AUTH_URL=` (unset, written as empty)
+  // should surface "is required", not "must be a valid URL" — the same
+  // user-hostile shape error the empty-to-undefined sweep was added to
+  // close for optional vars. The fix is per-field: required helpers
+  // share the same empty-to-undefined preprocessor so the rule applies
+  // uniformly without a parallel hand-maintained list of optional vars.
+  it("treats BETTER_AUTH_URL='' as missing (not malformed)", () => {
+    const broken = { ...BASE_ENV, BETTER_AUTH_URL: "" }
+    expect(() => parseEnv(broken)).toThrow(/BETTER_AUTH_URL is required/)
+  })
+
+  it("treats DATABASE_URL='' as missing (not malformed)", () => {
+    const broken = { ...BASE_ENV, DATABASE_URL: "" }
+    expect(() => parseEnv(broken)).toThrow(/DATABASE_URL is required/)
+  })
+
+  it("treats BETTER_AUTH_SECRET='' as missing (not too-short)", () => {
+    const broken = { ...BASE_ENV, BETTER_AUTH_SECRET: "" }
+    expect(() => parseEnv(broken)).toThrow(/BETTER_AUTH_SECRET is required/)
+  })
+
   it("accepts optional GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET", () => {
     const env = parseEnv({
       ...BASE_ENV,
