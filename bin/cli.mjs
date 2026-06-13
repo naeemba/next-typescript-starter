@@ -92,12 +92,20 @@ async function readTsconfigChain(target) {
   const chain = []
   let path = join(target, "tsconfig.json")
   for (let i = 0; i < 5; i++) {
-    const cfg = await readTsconfigAt(path)
+    let cfg = await readTsconfigAt(path)
+    // Fallback: if extends pointed at "./tsconfig.base" (no suffix) and the
+    // real file is `.jsonc` instead of `.json`, retry once before giving up.
+    // TS docs treat `.json` as canonical so most chains hit the first read.
+    if (!cfg && path.endsWith(".json")) {
+      const alt = `${path.slice(0, -5)}.jsonc`
+      cfg = await readTsconfigAt(alt)
+      if (cfg) path = alt
+    }
     if (!cfg) break
     chain.push(cfg)
     const ext = cfg.extends
     if (typeof ext !== "string" || !ext.startsWith(".")) break
-    path = resolve(dirname(path), ext.endsWith(".json") ? ext : `${ext}.json`)
+    path = resolve(dirname(path), /\.jsonc?$/.test(ext) ? ext : `${ext}.json`)
   }
   return chain
 }
