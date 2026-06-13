@@ -594,6 +594,137 @@ describe("next-starter init", () => {
     })
   })
 
+  // 0.6.0 — scaffold proxy.ts by default so a fresh consumer with passkey /
+  // google enabled has a working /admin gate out of the box, instead of
+  // having to read the README to discover createProxy.
+  describe("proxy.ts scaffold (default-on)", () => {
+    it("writes proxy.ts at project root with createProxy + a sample protect pattern", () => {
+      runCli(["init", dir])
+      expect(existsSync(join(dir, "proxy.ts"))).toBe(true)
+      const proxy = readFileSync(join(dir, "proxy.ts"), "utf8")
+      expect(proxy).toMatch(/from "@naeemba\/next-starter\/proxy"/)
+      expect(proxy).toMatch(/createProxy/)
+      expect(proxy).toMatch(/protect:\s*\[/)
+      // A starter matcher that excludes Next internals + the auth route.
+      expect(proxy).toMatch(/export const config = \{ matcher:/)
+    })
+
+    it("--no-proxy skips proxy.ts entirely", () => {
+      runCli(["init", dir, "--no-proxy"])
+      expect(existsSync(join(dir, "proxy.ts"))).toBe(false)
+    })
+
+    // Skip if an existing proxy.ts is present — never overwrite the
+    // consumer's gate. Consumer-owned, even with --force.
+    it("preserves an existing proxy.ts even with --force", () => {
+      const custom = `// custom proxy\nexport default function () {}\n`
+      writeFileSync(join(dir, "proxy.ts"), custom)
+      const { stdout } = runCli(["init", dir, "--force"])
+      expect(readFileSync(join(dir, "proxy.ts"), "utf8")).toBe(custom)
+      expect(stdout).toMatch(/proxy\.ts.*consumer-owned/)
+    })
+
+    // Skip if a middleware.ts (pre-Next-16 file) is present — the consumer
+    // already has a gate, and dropping a proxy.ts next to it would create
+    // two competing handlers.
+    it("skips proxy.ts when middleware.ts already exists", () => {
+      writeFileSync(join(dir, "middleware.ts"), `export default function () {}\n`)
+      const { stdout } = runCli(["init", dir])
+      expect(existsSync(join(dir, "proxy.ts"))).toBe(false)
+      expect(stdout).toMatch(/proxy\.ts.*existing.*middleware/)
+    })
+
+    // Under --src, the proxy.ts still lives at the project root — Next 16
+    // looks there, not under src/.
+    it("writes proxy.ts at project root even under --src", () => {
+      runCli(["init", dir, "--src"])
+      expect(existsSync(join(dir, "proxy.ts"))).toBe(true)
+      expect(existsSync(join(dir, "src/proxy.ts"))).toBe(false)
+    })
+
+    it("skips proxy.ts when src/proxy.ts already exists", () => {
+      mkdirSync(join(dir, "src"), { recursive: true })
+      writeFileSync(join(dir, "src/proxy.ts"), `export default function () {}\n`)
+      const { stdout } = runCli(["init", dir, "--src"])
+      expect(existsSync(join(dir, "proxy.ts"))).toBe(false)
+      expect(stdout).toMatch(/proxy\.ts.*existing/)
+    })
+  })
+
+  // 0.6.0 — scaffold app/sign-in/error/page.tsx so better-auth's magic-link
+  // verify errors land on friendly copy instead of better-auth's default
+  // JSON 400. The scaffolded sign-in/page.tsx sets errorCallbackUrl to
+  // "/sign-in/error" so the redirect flow is wired automatically.
+  describe("sign-in error page scaffold", () => {
+    it("writes app/sign-in/error/page.tsx wired to SignInErrorPage", () => {
+      runCli(["init", dir])
+      const path = join(dir, "app/sign-in/error/page.tsx")
+      expect(existsSync(path)).toBe(true)
+      const page = readFileSync(path, "utf8")
+      expect(page).toMatch(/SignInErrorPage/)
+      expect(page).toMatch(/from "@naeemba\/next-starter\/pages\/sign-in"/)
+    })
+
+    it("scaffolded sign-in page sets errorCallbackUrl='/sign-in/error'", () => {
+      runCli(["init", dir])
+      const page = readFileSync(join(dir, "app/sign-in/page.tsx"), "utf8")
+      expect(page).toMatch(/errorCallbackUrl="\/sign-in\/error"/)
+    })
+
+    it("--src writes the error page under src/", () => {
+      runCli(["init", dir, "--src"])
+      expect(existsSync(join(dir, "src/app/sign-in/error/page.tsx"))).toBe(true)
+    })
+
+    it("skips an existing error page without --force", () => {
+      runCli(["init", dir, "--no-src"])
+      writeFileSync(join(dir, "app/sign-in/error/page.tsx"), "// custom\n")
+      runCli(["init", dir, "--no-src"])
+      expect(readFileSync(join(dir, "app/sign-in/error/page.tsx"), "utf8")).toBe("// custom\n")
+    })
+  })
+
+  // 0.6.0 — scaffold a passkey-management UI when passkey is enabled. A
+  // fresh consumer running `init` with the default --passkey gets an
+  // app/account/passkeys/page.tsx so users can register a key without the
+  // consumer hand-wiring <PasskeyManagerPage/> from the README.
+  describe("passkey-manager page scaffold", () => {
+    it("default init writes app/account/passkeys/page.tsx wired to authClient", () => {
+      runCli(["init", dir])
+      const path = join(dir, "app/account/passkeys/page.tsx")
+      expect(existsSync(path)).toBe(true)
+      const page = readFileSync(path, "utf8")
+      expect(page).toMatch(/PasskeyManagerPage/)
+      expect(page).toMatch(/from "@naeemba\/next-starter\/pages\/passkey-manager"/)
+      expect(page).toMatch(/from "@\/lib\/auth-client"/)
+    })
+
+    it("--no-passkey omits the passkey-manager page", () => {
+      runCli(["init", dir, "--no-passkey"])
+      expect(existsSync(join(dir, "app/account/passkeys/page.tsx"))).toBe(false)
+    })
+
+    it("--src writes the page under src/", () => {
+      runCli(["init", dir, "--src"])
+      expect(existsSync(join(dir, "src/app/account/passkeys/page.tsx"))).toBe(true)
+      expect(existsSync(join(dir, "app/account/passkeys/page.tsx"))).toBe(false)
+    })
+
+    it("skips an existing page without --force", () => {
+      runCli(["init", dir, "--no-src"])
+      writeFileSync(join(dir, "app/account/passkeys/page.tsx"), "// custom\n")
+      runCli(["init", dir, "--no-src"])
+      expect(readFileSync(join(dir, "app/account/passkeys/page.tsx"), "utf8")).toBe("// custom\n")
+    })
+
+    it("overwrites an existing page with --force (starter-owned)", () => {
+      runCli(["init", dir, "--no-src"])
+      writeFileSync(join(dir, "app/account/passkeys/page.tsx"), "// custom\n")
+      runCli(["init", dir, "--no-src", "--force"])
+      expect(readFileSync(join(dir, "app/account/passkeys/page.tsx"), "utf8")).toMatch(/PasskeyManagerPage/)
+    })
+  })
+
   // 0.5.0 — the old README told consumers to add an `auth:generate` script.
   // That script is now dead code (schema ships from
   // @naeemba/next-starter/schema). Detect and report; opt-in remove via

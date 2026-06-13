@@ -12,4 +12,9 @@ export {
 // canonical interface in /client.
 export { type MagicLinkAuthClient } from "../../client/index.js"
 export { SignInPage, type SignInPageProps, type SignInPageClassNames } from "./sign-in-page.js"
+export {
+  SignInErrorPage,
+  type SignInErrorPageProps,
+  type SignInErrorPageClassNames,
+} from "./sign-in-error-page.js"
 export { SignInPage as default } from "./sign-in-page.js"

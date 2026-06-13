@@ -3,7 +3,7 @@ import { magicLink } from "better-auth/plugins"
 import { drizzleAdapter } from "better-auth/adapters/drizzle"
 import { createDb, createDbOptionsFromEnv } from "../db/index.js"
 import * as schema from "../schema/index.js"
-import { sendMagicLink, type MagicLinkEmailFields } from "../email/index.js"
+import { sendMagicLink, type MagicLinkEmailFields, type EmailTransport } from "../email/index.js"
 import { loadOptionalPeer } from "../internal/optional-peer.js"
 import { parseEnv } from "./config.js"
 
@@ -45,6 +45,7 @@ interface BuildSendMagicLinkOpts {
   allowlist?: (email: string) => boolean | Promise<boolean>
   customTemplate?: (args: { to: string; url: string; expiresIn: number }) =>
     Promise<MagicLinkEmailFields> | MagicLinkEmailFields
+  transport?: EmailTransport
 }
 
 function buildSendMagicLink(opts: BuildSendMagicLinkOpts) {
@@ -58,6 +59,7 @@ function buildSendMagicLink(opts: BuildSendMagicLinkOpts) {
       url,
       expiresIn: opts.magicLinkExpiresIn,
       template: opts.customTemplate,
+      transport: opts.transport,
     })
   }
 }
@@ -107,6 +109,37 @@ export interface CreateAuthOptions {
    * email matches.
    */
   singleAdmin?: string | string[]
+  /**
+   * Better-auth rate-limit knob. Pass `false` to disable entirely.
+   * Pass an object to set `window` / `max` / `storage`.
+   * Omit to inherit better-auth's defaults (enabled in production,
+   * `window: 10`, `max: 100`, plus the magic-link plugin's own internal
+   * 5-per-60s ceiling on `/sign-in/magic-link`).
+   *
+   * The env var `BETTER_AUTH_RATE_LIMIT_DISABLED=1` forces `enabled: false`
+   * regardless of opts at the time `createAuth()` runs, unless
+   * `opts.rateLimit.enabled === true` is explicit — the env override is
+   * meant as a local-dev escape hatch, not a way to silently downgrade a
+   * production config the consumer thought they enabled. Because
+   * `createAuth()` typically runs once at module init, a long-running
+   * server must be restarted for a toggled env var to take effect
+   * (`npm run dev` re-reads it on each restart).
+   */
+  rateLimit?: false | {
+    enabled?: boolean
+    window?: number
+    max?: number
+    storage?: "memory" | "secondary-storage"
+  }
+  /**
+   * BYO email transport for magic-link mail. When set, the built-in Resend
+   * / console dispatch is skipped entirely — your function receives the
+   * fully rendered fields (subject, html, text, to, from) and is
+   * responsible for delivery. Useful when the consumer already has a
+   * Postmark / Mailgun / SES wrapper and doesn't want a second email
+   * client in the process.
+   */
+  transport?: EmailTransport
 }
 
 export function createAuth(opts: CreateAuthOptions = {}): Auth {
@@ -163,6 +196,7 @@ export function createAuth(opts: CreateAuthOptions = {}): Auth {
           magicLinkExpiresIn,
           allowlist,
           customTemplate,
+          transport: opts.transport,
         }),
       }),
     ],
@@ -258,6 +292,26 @@ export function createAuth(opts: CreateAuthOptions = {}): Auth {
       ...(opts.session.expiresIn !== undefined && { expiresIn: opts.session.expiresIn }),
       ...(opts.session.updateAge !== undefined && { updateAge: opts.session.updateAge }),
     }
+  }
+
+  // The env-var escape hatch is intentionally a *force-disable*, not a
+  // "set the default to disabled". A consumer who explicitly opted into
+  // `{ enabled: true }` shouldn't get silently downgraded by an env var
+  // they may have inherited from a parent process or a CI runner. The
+  // value comparison is `=== "1"` (not truthy) so an unintentional
+  // export of `BETTER_AUTH_RATE_LIMIT_DISABLED=` (empty string) doesn't
+  // trip the disable path either.
+  const envForceDisable = process.env.BETTER_AUTH_RATE_LIMIT_DISABLED === "1"
+
+  if (opts.rateLimit === false) {
+    config.rateLimit = { enabled: false }
+  } else if (opts.rateLimit !== undefined) {
+    config.rateLimit =
+      envForceDisable && opts.rateLimit.enabled !== true
+        ? { ...opts.rateLimit, enabled: false }
+        : { ...opts.rateLimit }
+  } else if (envForceDisable) {
+    config.rateLimit = { enabled: false }
   }
 
   return betterAuth(config) as unknown as Auth

@@ -78,8 +78,53 @@ export const signInPage = ({ google, passkey }) => `import { SignInPage } from "
 import { authClient } from "@/lib/auth-client"
 
 export default function Page() {
-  return <SignInPage authClient={authClient}${google ? " google" : ""}${passkey ? " passkey" : ""} />
+  return (
+    <SignInPage
+      authClient={authClient}
+      errorCallbackUrl="/sign-in/error"${google ? "\n      google" : ""}${passkey ? "\n      passkey" : ""}
+    />
+  )
 }
+`
+
+// Minimal /sign-in/error page that turns better-auth's magic-link verify
+// errors (?error=EXPIRED_TOKEN, etc) into user-facing copy. Paired with
+// the signInPage scaffold above which sets errorCallbackUrl="/sign-in/error".
+export const signInErrorPage = `import { SignInErrorPage } from "@naeemba/next-starter/pages/sign-in"
+
+export default function Page() {
+  return <SignInErrorPage />
+}
+`
+
+export const passkeyManagerPage = `import { PasskeyManagerPage } from "@naeemba/next-starter/pages/passkey-manager"
+import { authClient } from "@/lib/auth-client"
+
+export default function Page() {
+  return <PasskeyManagerPage authClient={authClient} />
+}
+`
+
+// Next 16 root-level proxy.ts. Default scaffolds a sample /admin/:path* gate.
+// The matcher excludes Next internals and the auth route — the latter MUST
+// stay outside the protect-and-redirect path or the magic-link verify
+// endpoint itself would 302 to /sign-in and the magic link would never land.
+// Consumers needing host canonicalization, geo gating, or A/B routing should
+// switch to a custom proxy.ts using the re-exported `getSessionCookie` from
+// `@naeemba/next-starter/proxy` — see the README's "Custom proxy.ts" section.
+//
+// Matcher is intentionally broad — it mirrors create-next-app's default
+// exclusion plus our `/api/auth/` carve-out, so consumers who extend
+// `protect` to cover more routes don't accidentally re-run cookie parsing
+// on every static asset (`robots.txt`, `*.png`, etc) or every `/api/*`
+// route. For the as-scaffolded `/admin/:path*` protect alone, the cheaper
+// shape is `[\"/admin/:path*\"]`, but the broad form is friendlier for the
+// scaffold-then-edit flow.
+export const proxyTemplate = `import { createProxy } from "@naeemba/next-starter/proxy"
+
+export default createProxy({ protect: ["/admin/:path*"] })
+
+export const config = { matcher: ["/((?!_next/static|_next/image|favicon.ico|api/auth/).*)"] }
 `
 
 export const envExample = `DATABASE_URL=postgres://user:pass@host:5432/db

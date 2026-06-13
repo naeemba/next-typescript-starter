@@ -1,5 +1,78 @@
 # Upgrading
 
+## 0.5.x → 0.6.0
+
+0.6.0 is fully additive — there are no breaking API changes. The notable behavior changes:
+
+### Schema indexes (new migration)
+
+Four indexes ship with the schema in 0.6.0: `session_user_id_idx`, `account_user_id_idx`, `verification_identifier_idx`, `passkey_user_id_idx`. They're necessary for any deployment past a few thousand users (every session check is otherwise a sequential scan).
+
+Run `npx drizzle-kit generate` after upgrading. The generated migration is a single `CREATE INDEX` per table — fast and non-blocking on Postgres. Apply with `npx drizzle-kit migrate`.
+
+If your app already has these indexes (e.g. you hand-rolled them after spotting the gap), drizzle-kit's generator may emit a redundant `CREATE INDEX IF NOT EXISTS` or skip them entirely depending on your snapshot. Inspect the generated SQL before running.
+
+### `SignInForm` reads `?callbackUrl=` from the URL
+
+`<SignInPage/>` and `<SignInForm/>` now resolve the post-sign-in redirect from the URL query string in addition to the `callbackUrl` prop. Resolution order is query → prop → `"/"`.
+
+This restores the proxy → sign-in roundtrip: `proxy.ts` redirects `/studio → /sign-in?callbackUrl=/studio`, and after sign-in the user lands at `/studio` instead of `/`. No prop changes required if you only set `callbackUrl="/"` (now redundant — drop it if you like). Custom param name via `callbackParam` to match a non-default `createProxy({ callbackParam })`.
+
+**Same-origin defense:** values that target a different origin, use a `javascript:`/`data:` scheme, or begin with `//` / `/\` are silently dropped (falls back to the prop / `"/"`). This is defense-in-depth on top of better-auth's `trustedOrigins` and does not require any consumer changes.
+
+### Magic-link error pages (opt-in via `errorCallbackUrl`)
+
+To turn better-auth's verify-endpoint failures (expired token, used token, etc) into friendly copy, scaffold `app/sign-in/error/page.tsx` and pass `errorCallbackUrl="/sign-in/error"` to `<SignInPage/>`. A fresh `next-starter init` does this automatically; for existing apps, opt in by hand:
+
+```tsx
+// app/sign-in/page.tsx
+return <SignInPage authClient={authClient} errorCallbackUrl="/sign-in/error" google passkey />
+
+// app/sign-in/error/page.tsx
+import { SignInErrorPage } from "@naeemba/next-starter/pages/sign-in"
+export default function Page() { return <SignInErrorPage /> }
+```
+
+When unset, behavior is unchanged — better-auth returns a JSON 400 on verify failure.
+
+### CLI grows new scaffolds
+
+`next-starter init` now writes three additional files when their conditions are met:
+
+| File | When |
+|---|---|
+| `proxy.ts` | always (unless `--no-proxy` or `proxy.ts`/`middleware.ts` already exists) |
+| `app/account/passkeys/page.tsx` | when `--passkey` (default) — uses `<PasskeyManagerPage/>` |
+| `app/sign-in/error/page.tsx` | always — uses `<SignInErrorPage/>` |
+
+`proxy.ts` is consumer-owned (never overwritten, even with `--force`); the others are starter-owned (skip-or-`--force`).
+
+### `rateLimit` knob
+
+`createAuth({ rateLimit })` surfaces better-auth's existing rate-limit config so you don't have to reach into the raw options object. Defaults unchanged (better-auth: on in production).
+
+Env shortcut for local dev:
+
+```bash
+BETTER_AUTH_RATE_LIMIT_DISABLED=1 npm run dev
+```
+
+An explicit `{ enabled: true }` in code overrides the env, so a stray export in CI can't silently disable a production limit.
+
+### `transport` knob — BYO email delivery
+
+If you already have a `lib/email` wrapper around Postmark/Mailgun/SES/Resend, you can hand it to the starter and skip the second Resend client:
+
+```ts
+createAuth({
+  transport: async ({ to, from, subject, text, html }) => {
+    await mySendEmail({ to, from, subject, text, html })
+  },
+})
+```
+
+Composes with both the default template and a custom `magicLink.email`. `RESEND_API_KEY` is not required when `transport` is set.
+
 ## 0.4.x → 0.5.0
 
 0.5.0 is mostly additive. The one behavioral change is on `next-starter init --force`: it no longer overwrites `db/schema.ts` or `drizzle.config.ts` — see *CLI file ownership* below. If you don't run the CLI's `--force` flag against an existing project, nothing changes.

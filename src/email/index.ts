@@ -3,6 +3,18 @@ import { loadOptionalPeerAsync } from "../internal/optional-peer.js"
 import { sendViaConsole, type EmailArgs as TransportArgs } from "./console.js"
 import { sendViaResend } from "./resend.js"
 
+/**
+ * BYO email transport. Receives the fully rendered email (template already
+ * applied, react-email already rendered, recipient list already joined),
+ * and is responsible for actually delivering it. When set, the built-in
+ * Resend / console dispatch is skipped entirely — no Resend SDK import,
+ * no RESEND_API_KEY required.
+ *
+ * Useful when the consumer already has a Postmark / Mailgun / SES / custom
+ * wrapper and doesn't want a second email client in the process.
+ */
+export type EmailTransport = (args: TransportArgs) => Promise<void>
+
 export interface EmailArgs {
   to: string | string[]
   from?: string
@@ -10,6 +22,8 @@ export interface EmailArgs {
   text?: string
   html?: string
   react?: ReactElement
+  /** See `EmailTransport`. Overrides the built-in Resend / console dispatch. */
+  transport?: EmailTransport
 }
 
 export async function sendEmail(args: EmailArgs): Promise<void> {
@@ -19,7 +33,11 @@ export async function sendEmail(args: EmailArgs): Promise<void> {
       "[@naeemba/next-starter] sendEmail requires either `from` or process.env.EMAIL_FROM."
     )
   }
-  if (process.env.NODE_ENV === "production" && !process.env.RESEND_API_KEY) {
+  // Only the built-in dispatch path falls back to console-logging in
+  // production. A custom transport is the consumer's surface — they're
+  // expected to handle their own provider config and shouldn't see this
+  // warning when their wrapper is doing real delivery.
+  if (!args.transport && process.env.NODE_ENV === "production" && !process.env.RESEND_API_KEY) {
     console.warn(
       "[@naeemba/next-starter] WARNING: NODE_ENV=production but RESEND_API_KEY is unset. " +
         "Emails will be written to server logs instead of sent."
@@ -47,7 +65,9 @@ export async function sendEmail(args: EmailArgs): Promise<void> {
     text,
   }
 
-  if (process.env.RESEND_API_KEY) {
+  if (args.transport) {
+    await args.transport(transportArgs)
+  } else if (process.env.RESEND_API_KEY) {
     await sendViaResend(transportArgs)
   } else {
     await sendViaConsole(transportArgs)
@@ -65,6 +85,8 @@ export interface SendMagicLinkArgs {
   appName?: string
   template?: (args: { to: string; url: string; expiresIn: number }) =>
     Promise<MagicLinkEmailFields> | MagicLinkEmailFields
+  /** Forwarded to `sendEmail`. See `EmailTransport`. */
+  transport?: EmailTransport
 }
 
 export interface MagicLinkEmailFields {
@@ -85,6 +107,7 @@ export async function sendMagicLink(args: SendMagicLinkArgs): Promise<void> {
     subject: fields.subject,
     text: fields.text ?? `Sign in: ${args.url}`,
     html: fields.html,
+    transport: args.transport,
   })
 }
 

@@ -4,7 +4,8 @@ import { dirname, join, resolve, relative } from "node:path"
 import { argv, cwd, exit, stdout } from "node:process"
 import {
   libAuth, libAuthClient, libAuthServer, dbSchemaReExport,
-  drizzleConfig, authRoute, signInPage, envExample,
+  drizzleConfig, authRoute, signInPage, envExample, proxyTemplate,
+  passkeyManagerPage, signInErrorPage,
 } from "./templates.mjs"
 
 function parseArgs(input) {
@@ -13,6 +14,7 @@ function parseArgs(input) {
     src: undefined, // tri-state: true / false / undefined (auto)
     google: true,
     passkey: true,
+    proxy: true,
     skipEnv: false,
     cleanScripts: false,
     targetDir: cwd(),
@@ -25,6 +27,7 @@ function parseArgs(input) {
     else if (a === "--no-src") flags.src = false
     else if (a === "--no-google") flags.google = false
     else if (a === "--no-passkey") flags.passkey = false
+    else if (a === "--no-proxy") flags.proxy = false
     else if (a === "--skip-env") flags.skipEnv = true
     else if (a === "--clean-scripts") flags.cleanScripts = true
     else if (a === "--help" || a === "-h") return { help: true }
@@ -56,6 +59,7 @@ function helpText() {
     --no-src         force writes at project root
     --no-google      omit the google block from lib/auth.ts
     --no-passkey     omit the passkey block from lib/auth.ts
+    --no-proxy       do not scaffold proxy.ts (Next 16 route gate)
     --skip-env       do not write .env.example
     --clean-scripts  delete obsolete package.json scripts (e.g. auth:generate)
     -h, --help       this message
@@ -405,6 +409,32 @@ async function run() {
     preserved: [],
   }
 
+  // proxy.ts lives at project root regardless of src/ layout — Next 16
+  // looks there, not under src/. Skip when:
+  //   - --no-proxy was passed (consumer opted out)
+  //   - an existing middleware.ts is present (pre-Next-16 file the consumer
+  //     hasn't migrated yet; landing proxy.ts next to it would create two
+  //     competing gates)
+  //   - a src/proxy.ts or src/middleware.ts is present (uncommon but real
+  //     when the consumer overrides Next's lookup via a turbopack rewrite)
+  // An existing proxy.ts at the root is handled by the consumer-skip
+  // classification below, which prints the standard "consumer-owned —
+  // not overwritten" line.
+  let proxySkipReason = null
+  if (args.proxy) {
+    const competing = [
+      { path: join(target, "middleware.ts"),     kind: "middleware" },
+      { path: join(target, "src/middleware.ts"), kind: "middleware" },
+      { path: join(target, "src/proxy.ts"),      kind: "proxy"      },
+    ]
+    for (const { path, kind } of competing) {
+      if (await exists(path)) {
+        proxySkipReason = { kind, path: relative(target, path) }
+        break
+      }
+    }
+  }
+
   const files = [
     ["starter",       join(target, `${prefix}lib/auth.ts`),                       libAuth({ google: args.google, passkey: args.passkey, db: useExistingDb })],
     ["starter",       join(target, `${prefix}lib/auth-client.ts`),                libAuthClient({ passkey: args.passkey })],
@@ -413,7 +443,14 @@ async function run() {
     ["consumer-skip", join(target, `drizzle.config.ts`),                          drizzleConfig({ src: useSrc })],
     ["starter",       join(target, `${prefix}app/api/auth/[...all]/route.ts`),    authRoute],
     ["starter",       join(target, `${prefix}app/sign-in/page.tsx`),              signInPage({ google: args.google, passkey: args.passkey })],
+    ["starter",       join(target, `${prefix}app/sign-in/error/page.tsx`),        signInErrorPage],
   ]
+  if (args.proxy && !proxySkipReason) files.push(["consumer-skip", join(target, "proxy.ts"), proxyTemplate])
+  // Passkey-management UI — only when passkey is enabled, otherwise the
+  // generated page would import a feature the consumer opted out of and
+  // 404 at runtime (the passkey-manager route exists, but addPasskey()
+  // would hit a server with no passkey plugin loaded).
+  if (args.passkey) files.push(["starter", join(target, `${prefix}app/account/passkeys/page.tsx`), passkeyManagerPage])
   if (!args.skipEnv) files.push(["starter", join(target, ".env.example"), envExample])
 
   for (const [kind, path, content] of files) {
@@ -431,6 +468,12 @@ async function run() {
   for (const entry of status.skipped) {
     const note = entry.note ? ` (${entry.note})` : "  (exists, use --force to overwrite)"
     stdout.write(`  = ${rel(entry.path)}${note}\n`)
+  }
+
+  if (proxySkipReason) {
+    stdout.write(
+      `  = proxy.ts  (skipped — existing ${proxySkipReason.kind}.ts found at ${proxySkipReason.path})\n`,
+    )
   }
 
   if (useExistingDb) {

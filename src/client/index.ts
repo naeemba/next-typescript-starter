@@ -39,7 +39,17 @@ export function useWebAuthnSupported(): boolean {
 /** Minimal structural type for the magic-link side of the better-auth client. */
 export interface MagicLinkAuthClient {
   signIn: {
-    magicLink: (opts: { email: string; callbackURL: string }) =>
+    magicLink: (opts: {
+      email: string
+      callbackURL: string
+      /**
+       * URL the magic-link verify endpoint redirects to when verification
+       * fails (expired token, used token, etc). better-auth appends
+       * `?error=<code>` to the URL. Pair with `<SignInErrorPage/>` from
+       * `@naeemba/next-starter/pages/sign-in` for friendly copy.
+       */
+      errorCallbackURL?: string
+    }) =>
       Promise<{ error: { message?: string | null } | null | undefined }>
   }
 }

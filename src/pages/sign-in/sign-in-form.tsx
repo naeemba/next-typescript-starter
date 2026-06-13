@@ -60,7 +60,32 @@ export interface SignInFormClassNames {
 
 export interface SignInFormProps {
   authClient: SignInAuthClient
+  /**
+   * Where to redirect after a successful sign-in. Resolution order:
+   * 1. `?callbackUrl=` query param (or whatever `callbackParam` is set to)
+   * 2. this `callbackUrl` prop
+   * 3. `"/"`
+   *
+   * The query-string read is intentionally `window.location.search`-based
+   * rather than Next's `useSearchParams()` — it avoids forcing consumers to
+   * wrap the form in a Suspense boundary, and the URL is only read inside
+   * the submit / click handlers (client-only events) so SSR + hydration
+   * stay deterministic.
+   */
   callbackUrl?: string
+  /**
+   * Name of the URL query param to read for the post-sign-in redirect.
+   * Defaults to `"callbackUrl"` to match `createProxy`'s default.
+   */
+  callbackParam?: string
+  /**
+   * Path to redirect to when the magic-link verify endpoint fails (expired
+   * token, used token, etc). Better-auth's magic-link plugin appends
+   * `?error=<code>` to this URL; pair with `<SignInErrorPage/>` for friendly
+   * copy. When unset (the default), better-auth returns a JSON 400 response
+   * with no redirect — the user sees the raw error in the address bar.
+   */
+  errorCallbackUrl?: string
 
   /** Show "Continue with Google" button. */
   google?: boolean | { label?: ReactNode }
@@ -88,10 +113,45 @@ export interface SignInFormProps {
 type Status = "idle" | "sending" | "sent" | "error"
 type MethodStatus = { magicLink: Status; google: Status; passkey: Status }
 
+// Open-redirect defense-in-depth. The query-string value travels from
+// /sign-in?callbackUrl=... to better-auth's signIn call, which echoes it back
+// in the post-auth redirect. better-auth's own `trustedOrigins` is the
+// authoritative gate, but a bare passthrough here also lets a phisher
+// craft https://app.example.com/sign-in?callbackUrl=https://evil.example.com
+// and rely on the user noticing the final hop. Accept only same-origin
+// paths; silently drop anything else and fall through to prop / "/".
+//
+// Rejected shapes:
+//   - "//evil.com"   — protocol-relative; resolves to scheme://evil.com
+//   - "/\\evil.com"  — backslash bypass that some URL parsers normalize
+//   - "javascript:…" / "data:…" / "http(s)://…" — explicit schemes
+//   - any absolute URL whose origin != window.location.origin
+function isSafeSameOriginCallbackUrl(value: string): boolean {
+  if (value.startsWith("//") || value.startsWith("/\\")) return false
+  if (value.startsWith("/")) return true
+  if (typeof window === "undefined") return false
+  try {
+    const parsed = new URL(value, window.location.origin)
+    return parsed.origin === window.location.origin
+  } catch {
+    return false
+  }
+}
+
+function resolveCallbackUrl(callbackParam: string, propValue: string | undefined): string {
+  if (typeof window !== "undefined") {
+    const fromQuery = new URLSearchParams(window.location.search).get(callbackParam)
+    if (fromQuery && isSafeSameOriginCallbackUrl(fromQuery)) return fromQuery
+  }
+  return propValue ?? "/"
+}
+
 export function SignInForm(props: SignInFormProps) {
   const {
     authClient,
-    callbackUrl = "/",
+    callbackUrl,
+    callbackParam = "callbackUrl",
+    errorCallbackUrl,
     google,
     passkey,
     magicLink = true,
@@ -149,9 +209,15 @@ export function SignInForm(props: SignInFormProps) {
 
   async function onMagicLinkSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
+    const callbackURL = resolveCallbackUrl(callbackParam, callbackUrl)
     await runAttempt(
       "magicLink",
-      () => authClient.signIn.magicLink({ email, callbackURL: callbackUrl }),
+      () =>
+        authClient.signIn.magicLink({
+          email,
+          callbackURL,
+          ...(errorCallbackUrl ? { errorCallbackURL: errorCallbackUrl } : {}),
+        }),
       () => onSent?.(email),
     )
   }
@@ -161,9 +227,10 @@ export function SignInForm(props: SignInFormProps) {
       setMethod("google", "error", "Google sign-in is not configured on this client.")
       return
     }
+    const callbackURL = resolveCallbackUrl(callbackParam, callbackUrl)
     return runAttempt(
       "google",
-      () => social({ provider: "google", callbackURL: callbackUrl }),
+      () => social({ provider: "google", callbackURL }),
       () => onSignedIn?.(),
     )
   }
