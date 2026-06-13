@@ -4,7 +4,7 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle"
 import { createDb, createDbOptionsFromEnv } from "../db/index.js"
 import * as schema from "../schema/index.js"
 import { sendMagicLink, type MagicLinkEmailFields, type EmailTransport } from "../email/index.js"
-import { loadOptionalPeer } from "../internal/optional-peer.js"
+import { loadOptionalPeerAsync } from "../internal/optional-peer.js"
 import { parseEnv } from "./config.js"
 
 // `@better-auth/passkey` is loaded lazily so consumers who don't enable
@@ -12,6 +12,10 @@ import { parseEnv } from "./config.js"
 // nor bundle it. Type-only structural shape — `typeof import(...)` would
 // leak into our shipped `.d.ts` and force tsc resolution at consumer
 // build time even when the dep is absent.
+//
+// Async load is the only viable path: from 1.6.x onwards `@better-auth/passkey`
+// is ESM-only, so a sync `require()` from CJS contexts hits ERR_REQUIRE_ESM.
+// `await import()` works for both CJS and ESM, so this is the future-proof seam.
 interface PasskeyServerModule {
   passkey: (opts: { rpName: string; rpID: string; origin: string }) =>
     NonNullable<BetterAuthOptions["plugins"]>[number]
@@ -142,7 +146,7 @@ export interface CreateAuthOptions {
   transport?: EmailTransport
 }
 
-export function createAuth(opts: CreateAuthOptions = {}): Auth {
+export async function createAuth(opts: CreateAuthOptions = {}): Promise<Auth> {
   const overrides: Parameters<typeof parseEnv>[1] = {
     BETTER_AUTH_SECRET: opts.secret,
     BETTER_AUTH_URL: opts.baseURL,
@@ -271,8 +275,9 @@ export function createAuth(opts: CreateAuthOptions = {}): Auth {
   }
 
   if (opts.passkey) {
-    const passkeyMod = loadOptionalPeer<PasskeyServerModule>(
+    const passkeyMod = await loadOptionalPeerAsync<PasskeyServerModule>(
       "@better-auth/passkey",
+      () => import("@better-auth/passkey") as Promise<PasskeyServerModule>,
       "createAuth({ passkey })",
     )
     const url = new URL(env.BETTER_AUTH_URL)

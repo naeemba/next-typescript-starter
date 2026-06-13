@@ -10,21 +10,21 @@ const passkeyPlugin = (auth: unknown) =>
   findPlugin(auth, "passkey") as { options?: PasskeyOpts } | undefined
 
 describe("createAuth({ passkey })", () => {
-  it("loads the passkey plugin when opts.passkey is set", () => {
-    const auth = createAuth({
+  it("loads the passkey plugin when opts.passkey is set", async () => {
+    const auth = await createAuth({
       db: {} as never,
       passkey: { rpName: "Acme" },
     })
     expect(pluginIds(auth)).toContain("passkey")
   })
 
-  it("does NOT load the passkey plugin when opts.passkey is omitted", () => {
-    const auth = createAuth({ db: {} as never })
+  it("does NOT load the passkey plugin when opts.passkey is omitted", async () => {
+    const auth = await createAuth({ db: {} as never })
     expect(pluginIds(auth)).not.toContain("passkey")
   })
 
-  it("defaults rpID, rpName and origin from BETTER_AUTH_URL when not provided", () => {
-    const auth = createAuth({
+  it("defaults rpID, rpName and origin from BETTER_AUTH_URL when not provided", async () => {
+    const auth = await createAuth({
       db: {} as never,
       passkey: {},
     })
@@ -34,8 +34,8 @@ describe("createAuth({ passkey })", () => {
     expect(p?.options?.origin).toBe("https://app.example.com")
   })
 
-  it("respects explicit rpName / rpID / origin", () => {
-    const auth = createAuth({
+  it("respects explicit rpName / rpID / origin", async () => {
+    const auth = await createAuth({
       db: {} as never,
       passkey: { rpName: "Acme", rpID: "acme.example", origin: "https://acme.example" },
     })
@@ -55,15 +55,15 @@ describe("createAuth({ passkey })", () => {
     ["https://app.example.com", "https://app.example.com"],
     ["https://app.example.com/", "https://app.example.com"],
     ["https://app.example.com/auth/callback", "https://app.example.com"],
-  ])("normalises BETTER_AUTH_URL=%s to passkey.origin=%s", (url, expected) => {
+  ])("normalises BETTER_AUTH_URL=%s to passkey.origin=%s", async (url, expected) => {
     process.env.BETTER_AUTH_URL = url
-    const auth = createAuth({ db: {} as never, passkey: {} })
+    const auth = await createAuth({ db: {} as never, passkey: {} })
     expect(passkeyPlugin(auth)?.options?.origin).toBe(expected)
   })
 
-  it("strips the port from rpID via URL.hostname (rpID must be a domain, not an origin)", () => {
+  it("strips the port from rpID via URL.hostname (rpID must be a domain, not an origin)", async () => {
     process.env.BETTER_AUTH_URL = "https://app.example.com:8080"
-    const auth = createAuth({ db: {} as never, passkey: {} })
+    const auth = await createAuth({ db: {} as never, passkey: {} })
     expect(passkeyPlugin(auth)?.options?.rpID).toBe("app.example.com")
   })
 })

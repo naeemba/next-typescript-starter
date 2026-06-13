@@ -51,8 +51,10 @@ RESEND_API_KEY=...                             # optional — when unset, magic 
 
 ```ts
 import { createAuth } from "@naeemba/next-starter/auth"
-export const auth = createAuth()
+export const auth = await createAuth()
 ```
+
+`createAuth` is async (since 0.7.0) so it can `import()` ESM-only optional peers like `@better-auth/passkey`. Top-level await resolves once at module init in Next 16 server modules; downstream importers see `auth` as a resolved `Auth` instance, not a `Promise`.
 
 `createAuth` accepts options for `magicLink` (custom expiry, `allowlist`, custom `email` template), `session` (override session cookie / expiry settings), `google`, `passkey`, `singleAdmin` (lock sign-in to one or more emails), `accountLinking`, `rateLimit` (better-auth's rate-limit knob; `BETTER_AUTH_RATE_LIMIT_DISABLED=1` env force-disables for local dev), and `transport` (BYO email delivery — replaces the built-in Resend/console dispatch for magic-link mail).
 
@@ -153,7 +155,7 @@ That creates the `user`, `session`, `account`, `verification`, and `passkey` tab
 
 ```ts
 // lib/auth.ts
-export const auth = createAuth({
+export const auth = await createAuth({
   google: {
     // clientId / clientSecret default to env GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET
     allowlist: (profile) => profile.email.endsWith("@acme.com"), // optional
@@ -174,7 +176,7 @@ Render the button:
 For solo apps or admin tools, use the `singleAdmin` shortcut:
 
 ```ts
-createAuth({
+await createAuth({
   singleAdmin: "owner@example.com",          // or ["a@x.com", "b@x.com"]
   google: { /* clientId/secret from env */ },
 })
@@ -186,7 +188,7 @@ createAuth({
 
 ```ts
 // lib/auth.ts
-export const auth = createAuth({
+export const auth = await createAuth({
   passkey: { rpName: "Your App" },  // rpID and origin default from BETTER_AUTH_URL
 })
 ```
@@ -269,7 +271,7 @@ Set `errorCallbackUrl="/sign-in/error"` on `SignInPage`. When the verify endpoin
 ### Rate limits
 
 ```ts
-createAuth({
+await createAuth({
   rateLimit: { window: 60, max: 5 },  // shorter window / lower max than the prod default
 })
 ```
@@ -283,7 +285,7 @@ Skip the built-in Resend dispatch entirely — use your existing email wrapper:
 ```ts
 import { sendEmail as mySendEmail } from "@/lib/email"
 
-createAuth({
+await createAuth({
   transport: async ({ to, from, subject, text, html }) => {
     await mySendEmail({ to, from, subject, text, html })
   },

@@ -12,7 +12,7 @@ describe("createAuth", () => {
   it("uses process.env defaults when no opts passed", async () => {
     setupAuthEnv()
     const { createAuth } = await import("../src/auth/index")
-    const auth = createAuth()
+    const auth = await createAuth()
     expect(auth).toBeDefined()
     expect(typeof auth.api?.getSession).toBe("function")
   })
@@ -20,14 +20,14 @@ describe("createAuth", () => {
   it("opts override env", async () => {
     setupAuthEnv()
     const { createAuth } = await import("../src/auth/index")
-    const auth = createAuth({ baseURL: "https://override.example.com" })
+    const auth = await createAuth({ baseURL: "https://override.example.com" })
     expect(auth).toBeDefined()
   })
 
   it("throws with a clear error when DATABASE_URL is missing and not in opts", async () => {
     setupAuthEnv({ DATABASE_URL: undefined })
     const { createAuth } = await import("../src/auth/index")
-    expect(() => createAuth()).toThrow(/DATABASE_URL/)
+    await expect(createAuth()).rejects.toThrow(/DATABASE_URL/)
   })
 
   it("does not throw at module import time", async () => {
@@ -43,6 +43,6 @@ describe("createAuth", () => {
     setupAuthEnv({ DATABASE_URL: undefined })
     const { createAuth } = await import("../src/auth/index")
     const fakeDb = { select: () => {}, insert: () => {} } as any
-    expect(() => createAuth({ db: fakeDb })).not.toThrow()
+    await expect(createAuth({ db: fakeDb })).resolves.toBeDefined()
   })
 })
