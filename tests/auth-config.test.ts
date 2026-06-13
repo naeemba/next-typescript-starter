@@ -74,6 +74,22 @@ describe("parseEnv", () => {
     expect(() => parseEnv(broken)).toThrow(/BETTER_AUTH_SECRET is required/)
   })
 
+  // RFC 3986 §3.1 + WHATWG URL parser normalize `Postgres://` →
+  // `postgres:`, so postgres-js connects fine — but a case-sensitive
+  // startsWith rejected the literal `Postgres://` shape that Supabase /
+  // Heroku dashboards copy out with the scheme capitalized.
+  it("accepts DATABASE_URL with a case-insensitive Postgres scheme", () => {
+    for (const url of [
+      "Postgres://user:pw@localhost:5432/db",
+      "POSTGRES://user:pw@localhost:5432/db",
+      "Postgresql://user:pw@localhost:5432/db",
+      "POSTGRESQL://user:pw@localhost:5432/db",
+    ]) {
+      const env = parseEnv({ ...BASE_ENV, DATABASE_URL: url })
+      expect(env.DATABASE_URL).toBe(url)
+    }
+  })
+
   it("accepts optional GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET", () => {
     const env = parseEnv({
       ...BASE_ENV,

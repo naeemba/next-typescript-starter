@@ -25,6 +25,12 @@ const requiredString = (message: string) =>
 // `.refine` callbacks run AFTER `.min(1)` so an empty input surfaces the
 // `"is required"` message from `requiredString` rather than the refine's
 // shape-specific complaint.
+//
+// Scheme match is case-insensitive: RFC 3986 §3.1 makes URL schemes
+// case-insensitive, the WHATWG URL parser postgres-js uses normalizes
+// `Postgres://` → `postgres:`, and Supabase/Heroku dashboards copy out
+// connection strings with the scheme capitalized. Rejecting `Postgres://`
+// with "must be a Postgres connection string" is misleading.
 const databaseUrl = () =>
   z.preprocess(
     emptyToUndefined,
@@ -32,7 +38,7 @@ const databaseUrl = () =>
       .string({ error: "DATABASE_URL is required" })
       .min(1, "DATABASE_URL is required")
       .refine(
-        (s) => s.startsWith("postgres://") || s.startsWith("postgresql://"),
+        (s) => /^postgres(ql)?:\/\//i.test(s),
         "DATABASE_URL must be a Postgres connection string (postgres:// or postgresql://)"
       )
   )
