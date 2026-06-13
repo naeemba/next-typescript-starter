@@ -8,10 +8,11 @@
  */
 const ORIGINAL_ENV = { ...process.env }
 
-const BASE_ENV: Record<string, string | undefined> = {
+export const BASE_ENV: Record<string, string | undefined> = {
   DATABASE_URL: "postgres://u:p@h/d",
   BETTER_AUTH_SECRET: "x".repeat(32),
   BETTER_AUTH_URL: "https://app.example.com",
+  EMAIL_FROM: "auth@example.com",
 }
 
 export function setupAuthEnv(extra: Record<string, string | undefined> = {}): void {

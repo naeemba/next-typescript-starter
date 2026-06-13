@@ -28,6 +28,20 @@ export type Env = z.infer<typeof EnvSchema>
 
 export type EnvOverrides = Partial<Record<keyof Env, string | undefined>>
 
+// Env vars that should be treated as "unset" when present-but-empty. CI
+// platforms (GitHub Actions, Vercel, Fly, Render) commonly write all
+// configured-but-blank vars as `""`, and our own `.env.example` emits
+// `RESEND_API_KEY=` for the dev path — both shapes would otherwise fail
+// `.email()` / `.url()` Zod validation with a confusing "Invalid email"
+// message. Required vars are NOT in this list; their existing
+// `.min(1)` / `"required"` checks should keep firing.
+const OPTIONAL_EMPTY_TO_UNDEFINED: ReadonlyArray<keyof Env> = [
+  "EMAIL_FROM",
+  "RESEND_API_KEY",
+  "GOOGLE_CLIENT_ID",
+  "GOOGLE_CLIENT_SECRET",
+]
+
 export function parseEnv(
   input: Record<string, string | undefined> = process.env,
   overrides: EnvOverrides = {}
@@ -35,6 +49,9 @@ export function parseEnv(
   const merged: Record<string, string | undefined> = { ...input }
   for (const [k, v] of Object.entries(overrides)) {
     if (v !== undefined) merged[k] = v
+  }
+  for (const k of OPTIONAL_EMPTY_TO_UNDEFINED) {
+    if (merged[k] === "") merged[k] = undefined
   }
   const result = EnvSchema.safeParse(merged)
   if (result.success) return result.data
