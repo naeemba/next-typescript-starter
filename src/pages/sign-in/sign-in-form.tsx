@@ -7,6 +7,7 @@ import {
   type SocialAuthClient,
   type PasskeyAuthClient,
 } from "../../client/index.js"
+import { styled, joinClassNames } from "./styled.js"
 
 /**
  * Structural type for the better-auth client methods SignInForm uses.
@@ -86,20 +87,6 @@ export interface SignInFormProps {
 
 type Status = "idle" | "sending" | "sent" | "error"
 type MethodStatus = { magicLink: Status; google: Status; passkey: Status }
-
-// When a per-element className is provided, drop the inline style entirely
-// — your CSS becomes the single source of truth. Without this swap, inline
-// `style` would beat any rule from a Tailwind utility / external stylesheet
-// short of `!important`, which is the exact mismatch the classNames prop
-// is meant to eliminate.
-function styled(className: string | undefined, fallback: CSSProperties): { className?: string; style?: CSSProperties } {
-  return className ? { className } : { style: fallback }
-}
-
-function joinClassNames(...parts: Array<string | undefined>): string | undefined {
-  const filtered = parts.filter((p): p is string => Boolean(p))
-  return filtered.length === 0 ? undefined : filtered.join(" ")
-}
 
 export function SignInForm(props: SignInFormProps) {
   const {
