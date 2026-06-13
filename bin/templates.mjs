@@ -42,8 +42,6 @@ export const dbSchemaReExport = ({ passkey }) =>
   `export { user, session, account, verification${passkey ? ", passkey" : ""} } from "@naeemba/next-starter/schema"
 `
 
-export const dbSchema = (opts) => dbSchemaReExport(opts)
-
 // `schema` must track the prefix the CLI uses to write db/schema.ts.
 // With `--src` (or auto-detected src layout) the schema lives at
 // `src/db/schema.ts`, otherwise `db/schema.ts`. A hardcoded

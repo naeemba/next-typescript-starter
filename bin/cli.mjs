@@ -3,7 +3,7 @@ import { mkdir, readFile, writeFile, access } from "node:fs/promises"
 import { dirname, join, resolve, relative } from "node:path"
 import { argv, cwd, exit, stdout } from "node:process"
 import {
-  libAuth, libAuthClient, libAuthServer, dbSchema, dbSchemaReExport,
+  libAuth, libAuthClient, libAuthServer, dbSchemaReExport,
   drizzleConfig, authRoute, signInPage, envExample,
 } from "./templates.mjs"
 
