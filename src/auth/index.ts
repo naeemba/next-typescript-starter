@@ -3,7 +3,7 @@ import { magicLink } from "better-auth/plugins"
 import { drizzleAdapter } from "better-auth/adapters/drizzle"
 import { createDb, createDbOptionsFromEnv } from "../db/index.js"
 import * as schema from "../schema/index.js"
-import { sendMagicLink, type MagicLinkEmailFields } from "../email/index.js"
+import { sendMagicLink, type MagicLinkEmailFields, type EmailTransport } from "../email/index.js"
 import { loadOptionalPeer } from "../internal/optional-peer.js"
 import { parseEnv } from "./config.js"
 
@@ -45,6 +45,7 @@ interface BuildSendMagicLinkOpts {
   allowlist?: (email: string) => boolean | Promise<boolean>
   customTemplate?: (args: { to: string; url: string; expiresIn: number }) =>
     Promise<MagicLinkEmailFields> | MagicLinkEmailFields
+  transport?: EmailTransport
 }
 
 function buildSendMagicLink(opts: BuildSendMagicLinkOpts) {
@@ -58,6 +59,7 @@ function buildSendMagicLink(opts: BuildSendMagicLinkOpts) {
       url,
       expiresIn: opts.magicLinkExpiresIn,
       template: opts.customTemplate,
+      transport: opts.transport,
     })
   }
 }
@@ -126,6 +128,15 @@ export interface CreateAuthOptions {
     max?: number
     storage?: "memory" | "secondary-storage"
   }
+  /**
+   * BYO email transport for magic-link mail. When set, the built-in Resend
+   * / console dispatch is skipped entirely — your function receives the
+   * fully rendered fields (subject, html, text, to, from) and is
+   * responsible for delivery. Useful when the consumer already has a
+   * Postmark / Mailgun / SES wrapper and doesn't want a second email
+   * client in the process.
+   */
+  transport?: EmailTransport
 }
 
 export function createAuth(opts: CreateAuthOptions = {}): Auth {
@@ -182,6 +193,7 @@ export function createAuth(opts: CreateAuthOptions = {}): Auth {
           magicLinkExpiresIn,
           allowlist,
           customTemplate,
+          transport: opts.transport,
         }),
       }),
     ],
