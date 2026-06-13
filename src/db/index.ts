@@ -40,6 +40,17 @@ export function createDb(databaseUrl: string, opts: CreateDbOptions = {}): Db {
   return drizzle(client, { schema })
 }
 
+function assertPositiveInteger(name: string, raw: string, footgun?: string): number {
+  const n = Number(raw)
+  if (!Number.isFinite(n) || n <= 0 || !Number.isInteger(n)) {
+    const note = footgun ? ` (${footgun})` : ""
+    throw new Error(
+      `[@naeemba/next-starter] ${name} must be a positive integer${note}, got: ${JSON.stringify(raw)}`,
+    )
+  }
+  return n
+}
+
 /**
  * Reads pool tuning options from `process.env`. Lets the documented
  * `import { db }` proxy and `createAuth({})` honour `DATABASE_PREPARE`,
@@ -55,17 +66,6 @@ export function createDb(databaseUrl: string, opts: CreateDbOptions = {}): Db {
  * the next request. Consumers who want boot-time validation can call
  * `createDbOptionsFromEnv()` themselves at module load.
  */
-function assertPositiveInteger(name: string, raw: string, footgun?: string): number {
-  const n = Number(raw)
-  if (!Number.isFinite(n) || n <= 0 || !Number.isInteger(n)) {
-    const note = footgun ? ` (${footgun})` : ""
-    throw new Error(
-      `[@naeemba/next-starter] ${name} must be a positive integer${note}, got: ${JSON.stringify(raw)}`,
-    )
-  }
-  return n
-}
-
 export function createDbOptionsFromEnv(
   source: Record<string, string | undefined> = process.env
 ): CreateDbOptions {
