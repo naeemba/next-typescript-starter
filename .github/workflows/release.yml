@@ -31,6 +31,17 @@ jobs:
       BETTER_AUTH_URL: http://localhost:3000
       RESEND_API_KEY: ""
       EMAIL_FROM: auth@example.com
+      # Matches both heading shapes: `## 0.4.0` (hand-written) and
+      # `## [0.4.0](url) (date)` (conventional-changelog). `[[]?` (not `(\[)?`)
+      # so `awk -v re=...` doesn't strip the backslash and collapse the
+      # optional group into a `[` class-open. Boundary class
+      # `[^0-9.A-Za-z+-]` keeps `0.4.0` from matching `0.4.0-beta.1`,
+      # `0.4.0+build.7`, or `0.40`. $VERSION metachars (`.`, `+`) are
+      # escaped via character classes at the consuming step before
+      # substitution — `0\.4\.0\+build\.7` is interpretation-dependent
+      # across awk flavors (BSD awk drops `\+` and the `+` becomes a
+      # quantifier), `0[.]4[.]0[+]build[.]7` is portable.
+      VERSION_HEADING_RE: '^## [[]?VERSION_PLACEHOLDER([^0-9.A-Za-z+-]|$)'
 
     steps:
       - uses: actions/checkout@v4
@@ -79,21 +90,16 @@ jobs:
         run: npm --workspace examples/basic run test:e2e
 
       - name: Generate CHANGELOG entry for this version (if missing)
-        env:
-          # Boundary class excludes `-`, `+`, `.`, digits, letters so `0.4.0`
-          # never matches `0.4.0-beta.1`, `0.4.0+build.7`, or `0.40`. Same
-          # pattern lives in the release-notes step below — keep them in lockstep.
-          # Anchors both heading shapes: `## 0.4.0` (hand-written) and
-          # `## [0.4.0](url) (date)` (conventional-changelog).
-          # `[[]?` (not `(\[)?`) so `awk -v re=...` doesn't strip the backslash and
-          # collapse the optional group into a `[` class-open. Boundary class
-          # `[^0-9.A-Za-z+-]` keeps `0.4.0` from matching `0.4.0-beta.1`,
-          # `0.4.0+build.7`, or `0.40`. The literal `.` in the version is left
-          # unescaped — close enough for semver inputs from a `v*.*.*` tag.
-          VERSION_HEADING_RE: '^## [[]?VERSION_PLACEHOLDER([^0-9.A-Za-z+-]|$)'
         run: |
           VERSION="${GITHUB_REF#refs/tags/v}"
-          RE="${VERSION_HEADING_RE/VERSION_PLACEHOLDER/$VERSION}"
+          # Escape regex metachars before substituting $VERSION into the awk
+          # ERE. Without this, `0.4.0+build.7` is read by awk as `0` followed
+          # by `+` (one-or-more of the preceding `0`), then `build.7` — so
+          # the regex matches `## 0.4.0build.7` (no plus) but NOT the actual
+          # `## 0.4.0+build.7` heading, and the CHANGELOG-presence check
+          # falsely reports the section as missing.
+          VERSION_ESC=$(printf '%s' "$VERSION" | sed -e 's/\./[.]/g' -e 's/+/[+]/g')
+          RE="${VERSION_HEADING_RE/VERSION_PLACEHOLDER/$VERSION_ESC}"
           if awk -v re="$RE" '$0 ~ re { found=1; exit } END { exit !found }' CHANGELOG.md; then
             echo "CHANGELOG already has section for v$VERSION; skipping auto-generation."
           else
@@ -111,20 +117,16 @@ jobs:
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Must stay in lockstep with the regex in the generate step above.
-          # `[[]?` (not `(\[)?`) so `awk -v re=...` doesn't strip the backslash and
-          # collapse the optional group into a `[` class-open. Boundary class
-          # `[^0-9.A-Za-z+-]` keeps `0.4.0` from matching `0.4.0-beta.1`,
-          # `0.4.0+build.7`, or `0.40`. The literal `.` in the version is left
-          # unescaped — close enough for semver inputs from a `v*.*.*` tag.
-          VERSION_HEADING_RE: '^## [[]?VERSION_PLACEHOLDER([^0-9.A-Za-z+-]|$)'
         run: |
           VERSION="${GITHUB_REF#refs/tags/v}"
           if gh release view "v$VERSION" >/dev/null 2>&1; then
             echo "Release v$VERSION already exists — skipping."
             exit 0
           fi
-          RE="${VERSION_HEADING_RE/VERSION_PLACEHOLDER/$VERSION}"
+          # See the generate step above for why $VERSION needs metachar
+          # escaping before substitution into the awk ERE.
+          VERSION_ESC=$(printf '%s' "$VERSION" | sed -e 's/\./[.]/g' -e 's/+/[+]/g')
+          RE="${VERSION_HEADING_RE/VERSION_PLACEHOLDER/$VERSION_ESC}"
           NOTES_FILE=$(mktemp)
           awk -v re="$RE" '
             $0 ~ re      { p=1; next }
