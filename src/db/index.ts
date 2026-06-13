@@ -47,10 +47,13 @@ export function createDb(databaseUrl: string, opts: CreateDbOptions = {}): Db {
  * thread an opts object through every entry point.
  *
  * Throws on malformed values (`DATABASE_PREPARE=fals`, `DATABASE_POOL_MAX=abc`,
- * `DATABASE_POOL_MAX=-1`, etc). The `import { db }` proxy is the only
- * validator for these vars — silently falling back to defaults would
- * re-enable prepared statements against a transaction-pool pgBouncer in
- * prod with no boot-time signal. Fail loud instead.
+ * `DATABASE_POOL_MAX=-1`, etc) — but ONLY at the first `db`-proxy access
+ * (or the first `createAuth()` call) that triggers `createDb`, not at
+ * module import. Silently falling back to defaults would re-enable
+ * prepared statements against a transaction-pool pgBouncer in prod with
+ * no signal; loud refusal lets the consumer correct the env value before
+ * the next request. Consumers who want boot-time validation can call
+ * `createDbOptionsFromEnv()` themselves at module load.
  */
 function assertPositiveInteger(name: string, raw: string, footgun?: string): number {
   const n = Number(raw)
