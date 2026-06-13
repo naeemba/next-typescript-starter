@@ -152,6 +152,29 @@ describe("next-starter init", () => {
     expect(existsSync(join(dir, "lib/auth.ts"))).toBe(false)
   })
 
+  // Regression: `drizzleConfig` used to be a static string with
+  // `schema: "./db/schema.ts"`, but under `--src` the CLI writes the
+  // schema at `src/db/schema.ts`. The mismatch made the very next step
+  // (`npm run db:generate` / `db:migrate`) fail with
+  // "Could not find schema file at './db/schema.ts'". The drizzle config's
+  // schema path MUST track the same prefix used for db/schema.ts.
+  it("--src writes drizzle.config.ts pointing at src/db/schema.ts", () => {
+    runCli(["init", dir, "--src"])
+    const cfg = readFileSync(join(dir, "drizzle.config.ts"), "utf8")
+    expect(cfg).toMatch(/schema:\s*"\.\/src\/db\/schema\.ts"/)
+    expect(cfg).not.toMatch(/schema:\s*"\.\/db\/schema\.ts"/)
+    // Sanity: the path it points at is the file the same run wrote.
+    expect(existsSync(join(dir, "src/db/schema.ts"))).toBe(true)
+  })
+
+  it("--no-src writes drizzle.config.ts pointing at db/schema.ts", () => {
+    runCli(["init", dir, "--no-src"])
+    const cfg = readFileSync(join(dir, "drizzle.config.ts"), "utf8")
+    expect(cfg).toMatch(/schema:\s*"\.\/db\/schema\.ts"/)
+    expect(cfg).not.toMatch(/schema:\s*"\.\/src\/db\/schema\.ts"/)
+    expect(existsSync(join(dir, "db/schema.ts"))).toBe(true)
+  })
+
   it("auto-detects src/ layout when src/app/ pre-exists", () => {
     writeFileSync(join(dir, "package.json"), "{}\n") // ensure dir not empty
     mkdirSync(join(dir, "src/app"), { recursive: true })

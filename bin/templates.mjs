@@ -35,10 +35,16 @@ export const { getSession, requireSession } = createServer(auth)
 export const dbSchema = ({ passkey }) => `export { user, session, account, verification${passkey ? ", passkey" : ""} } from "@naeemba/next-starter/schema"
 `
 
-export const drizzleConfig = `import { defineConfig } from "drizzle-kit"
+// `schema` must track the prefix the CLI uses to write db/schema.ts.
+// With `--src` (or auto-detected src layout) the schema lives at
+// `src/db/schema.ts`, otherwise `db/schema.ts`. A hardcoded
+// `./db/schema.ts` would make `npm run db:generate` fail in src layouts
+// with "Could not find schema file" — exactly the paper-cut the CLI is
+// meant to eliminate.
+export const drizzleConfig = ({ src }) => `import { defineConfig } from "drizzle-kit"
 
 export default defineConfig({
-  schema: "./db/schema.ts",
+  schema: "${src ? "./src/db/schema.ts" : "./db/schema.ts"}",
   out: "./drizzle",
   dialect: "postgresql",
   dbCredentials: {

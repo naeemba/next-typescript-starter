@@ -242,7 +242,7 @@ async function run() {
     [join(target, `${prefix}lib/auth-client.ts`),                         libAuthClient({ passkey: args.passkey })],
     [join(target, `${prefix}lib/auth-server.ts`),                         libAuthServer],
     [join(target, `${prefix}db/schema.ts`),                               dbSchema({ passkey: args.passkey })],
-    [join(target, `drizzle.config.ts`),                                    drizzleConfig],
+    [join(target, `drizzle.config.ts`),                                    drizzleConfig({ src: useSrc })],
     [join(target, `${prefix}app/api/auth/[...all]/route.ts`),              authRoute],
     [join(target, `${prefix}app/sign-in/page.tsx`),                        signInPage({ google: args.google, passkey: args.passkey })],
   ]
