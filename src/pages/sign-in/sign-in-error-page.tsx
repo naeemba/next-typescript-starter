@@ -64,11 +64,16 @@ export function SignInErrorPage(props: SignInErrorPageProps) {
     classNames,
   } = props
 
-  // Read the error code on mount only. Re-reading on every render would
-  // not survive client-side navigation (Next swaps the URL without
-  // re-mounting), but for the magic-link verify → redirect → error page
-  // flow, the URL is only set once.
-  const [code, setCode] = useState<string | null>(null)
+  // Seed the error code from the URL on initial render so the very first
+  // paint already shows the mapped friendly copy instead of the generic
+  // fallback — otherwise the user briefly sees `genericMessage` flash
+  // before the effect-driven re-render swaps it for the real message.
+  // SSR returns `null` (the effect below picks it up on hydration), and a
+  // subsequent `errorParam` prop change is handled by the effect too.
+  const [code, setCode] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null
+    return new URLSearchParams(window.location.search).get(errorParam)
+  })
   useEffect(() => {
     if (typeof window === "undefined") return
     setCode(new URLSearchParams(window.location.search).get(errorParam))
