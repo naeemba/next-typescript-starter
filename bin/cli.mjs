@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { mkdir, readdir, readFile, writeFile, access } from "node:fs/promises"
+import { mkdir, readFile, writeFile, access } from "node:fs/promises"
 import { dirname, join, resolve, relative } from "node:path"
 import { argv, cwd, exit, stdout } from "node:process"
 import {
@@ -68,12 +68,44 @@ async function exists(path) {
 // create-next-app writes tsconfig.json with line comments (// ...) and
 // occasionally trailing commas — valid JSONC, not strict JSON. Strip
 // both before JSON.parse so detection doesn't silently fall through.
+//
+// Walk character-by-character tracking string context so we never strip
+// `//` or `/* */` that appear inside string values. A regex-only stripper
+// (the previous implementation) clobbered legitimate `//-disabled` keys
+// and any value containing `//`, which silently failed JSON.parse and
+// emitted the misleading `@/*`-paths-missing warning.
 function parseJsonc(raw) {
-  const stripped = raw
-    .replace(/\/\*[\s\S]*?\*\//g, "")     // block comments
-    .replace(/(^|[^:])\/\/.*$/gm, "$1")   // line comments (avoid URLs in strings)
-    .replace(/,(\s*[}\]])/g, "$1")        // trailing commas
-  return JSON.parse(stripped)
+  let out = ""
+  let i = 0
+  const n = raw.length
+  while (i < n) {
+    const c = raw[i]
+    if (c === '"') {
+      const start = i
+      i++
+      while (i < n) {
+        if (raw[i] === "\\") { i += 2; continue }
+        if (raw[i] === '"') { i++; break }
+        i++
+      }
+      out += raw.slice(start, i)
+      continue
+    }
+    if (c === "/" && raw[i + 1] === "/") {
+      i += 2
+      while (i < n && raw[i] !== "\n") i++
+      continue
+    }
+    if (c === "/" && raw[i + 1] === "*") {
+      i += 2
+      while (i < n && !(raw[i] === "*" && raw[i + 1] === "/")) i++
+      i += 2
+      continue
+    }
+    out += c
+    i++
+  }
+  return JSON.parse(out.replace(/,(\s*[}\]])/g, "$1"))
 }
 
 async function readTsconfigAt(path) {
@@ -149,14 +181,24 @@ async function writeFileSafe(path, content, force, status) {
 }
 
 async function run() {
+  // argv[2] is the subcommand. Handle `--help` / `-h` here BEFORE the
+  // `init` check so `next-starter --help` exits 0 (shell convention) —
+  // otherwise it falls through to the unknown-subcommand path and exits 1,
+  // breaking `next-starter --help && echo ok`.
+  const subcommand = argv[2]
+  if (subcommand === "--help" || subcommand === "-h" || subcommand === undefined) {
+    stdout.write(helpText())
+    return
+  }
+  if (subcommand !== "init") {
+    stdout.write(`Unknown subcommand: ${subcommand}\n\n`)
+    stdout.write(helpText())
+    exit(1)
+  }
   const args = parseArgs(argv.slice(3)) // skip node, cli.mjs, init
   if (args.help) {
     stdout.write(helpText())
     return
-  }
-  if (argv[2] !== "init") {
-    stdout.write(helpText())
-    exit(1)
   }
 
   const target = args.targetDir
@@ -169,12 +211,12 @@ async function run() {
 
   const files = [
     [join(target, `${prefix}lib/auth.ts`),                                libAuth({ google: args.google, passkey: args.passkey })],
-    [join(target, `${prefix}lib/auth-client.ts`),                         libAuthClient],
+    [join(target, `${prefix}lib/auth-client.ts`),                         libAuthClient({ passkey: args.passkey })],
     [join(target, `${prefix}lib/auth-server.ts`),                         libAuthServer],
-    [join(target, `${prefix}db/schema.ts`),                               dbSchema],
+    [join(target, `${prefix}db/schema.ts`),                               dbSchema({ passkey: args.passkey })],
     [join(target, `drizzle.config.ts`),                                    drizzleConfig],
     [join(target, `${prefix}app/api/auth/[...all]/route.ts`),              authRoute],
-    [join(target, `${prefix}app/sign-in/page.tsx`),                        signInPage],
+    [join(target, `${prefix}app/sign-in/page.tsx`),                        signInPage({ google: args.google, passkey: args.passkey })],
   ]
   if (!args.skipEnv) files.push([join(target, ".env.example"), envExample])
 

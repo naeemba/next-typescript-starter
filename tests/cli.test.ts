@@ -87,6 +87,58 @@ describe("next-starter init", () => {
     expect(contents).not.toMatch(/passkey:/)
   })
 
+  // The `--no-passkey` flag must propagate to every template that names
+  // the passkey peer — not just lib/auth.ts. Each missed template
+  // re-introduces the dependency: db/schema.ts re-exporting `passkey`
+  // creates a migration for a table the user opted out of, and
+  // lib/auth-client.ts defaulting to `passkey: true` keeps loading
+  // @better-auth/passkey/client at runtime.
+  it("--no-passkey drops `passkey` from db/schema.ts re-exports", () => {
+    runCli(["init", dir, "--no-passkey"])
+    const schema = readFileSync(join(dir, "db/schema.ts"), "utf8")
+    expect(schema).not.toMatch(/\bpasskey\b/)
+    expect(schema).toMatch(/user, session, account, verification/)
+  })
+
+  it("--no-passkey emits `passkey: false` in lib/auth-client.ts", () => {
+    runCli(["init", dir, "--no-passkey"])
+    const client = readFileSync(join(dir, "lib/auth-client.ts"), "utf8")
+    expect(client).toMatch(/passkey:\s*false/)
+  })
+
+  it("default init emits the passkey re-export and no `passkey: false` override", () => {
+    runCli(["init", dir])
+    const schema = readFileSync(join(dir, "db/schema.ts"), "utf8")
+    expect(schema).toMatch(/\bpasskey\b/)
+    const client = readFileSync(join(dir, "lib/auth-client.ts"), "utf8")
+    expect(client).not.toMatch(/passkey:\s*false/)
+  })
+
+  // The sign-in page must propagate `google` / `passkey` props or
+  // <SignInForm> hides both buttons (showGoogle / showPasskey only
+  // render when the prop is truthy). A default init with both providers
+  // enabled would otherwise render a magic-link-only UI.
+  it("default init's sign-in page passes `google` and `passkey` props", () => {
+    runCli(["init", dir])
+    const page = readFileSync(join(dir, "app/sign-in/page.tsx"), "utf8")
+    expect(page).toMatch(/<SignInPage[^>]*\bgoogle\b/)
+    expect(page).toMatch(/<SignInPage[^>]*\bpasskey\b/)
+  })
+
+  it("--no-google drops the `google` prop from the sign-in page", () => {
+    runCli(["init", dir, "--no-google"])
+    const page = readFileSync(join(dir, "app/sign-in/page.tsx"), "utf8")
+    expect(page).not.toMatch(/<SignInPage[^>]*\bgoogle\b/)
+    expect(page).toMatch(/<SignInPage[^>]*\bpasskey\b/)
+  })
+
+  it("--no-passkey drops the `passkey` prop from the sign-in page", () => {
+    runCli(["init", dir, "--no-passkey"])
+    const page = readFileSync(join(dir, "app/sign-in/page.tsx"), "utf8")
+    expect(page).toMatch(/<SignInPage[^>]*\bgoogle\b/)
+    expect(page).not.toMatch(/<SignInPage[^>]*\bpasskey\b/)
+  })
+
   it("--skip-env omits .env.example", () => {
     runCli(["init", dir, "--skip-env"])
     expect(existsSync(join(dir, ".env.example"))).toBe(false)
@@ -115,6 +167,48 @@ describe("next-starter init", () => {
     const { code, stdout } = runCli(["init", "--help"])
     expect(code).toBe(0)
     expect(stdout).toMatch(/next-starter init/)
+  })
+
+  // Regression: `next-starter --help` (no subcommand) used to fall through
+  // the unknown-subcommand branch and exit 1, breaking shell idioms like
+  // `next-starter --help && echo ok`. Both bare-flag forms and no args at
+  // all should print help and exit 0.
+  it("prints help and exits 0 for top-level --help / -h / no args", () => {
+    for (const args of [["--help"], ["-h"], []]) {
+      const { code, stdout } = runCli(args)
+      expect(code).toBe(0)
+      expect(stdout).toMatch(/next-starter init/)
+    }
+  })
+
+  it("exits non-zero on an unknown subcommand", () => {
+    const { code, stdout } = runCli(["bogus"])
+    expect(code).toBe(1)
+    expect(stdout).toMatch(/Unknown subcommand/)
+  })
+
+  // Regression: the old line-comment regex stripped `//` even when it
+  // appeared inside JSON string values, breaking JSON.parse and making
+  // detectSrcLayout fall through to the false-positive warning path.
+  // A real-world failure shape is a path value that contains `//`.
+  it("preserves `//` inside JSONC string values when parsing tsconfig", () => {
+    writeFileSync(
+      join(dir, "tsconfig.json"),
+      `{
+  "compilerOptions": {
+    "baseUrl": ".",
+    // a comment we DO want stripped
+    "paths": { "@/*": ["./src/*"] }
+  },
+  "scratch": "http://example.com/with//double"
+}
+`,
+    )
+    const { code, stdout } = runCli(["init", dir])
+    expect(code).toBe(0)
+    // The src/ layout would only resolve if the JSONC parse succeeded.
+    expect(existsSync(join(dir, "src/lib/auth.ts"))).toBe(true)
+    expect(stdout).not.toMatch(/paths.*"@\/\*"/)
   })
 
   // create-next-app writes tsconfig.json with line comments + trailing commas.

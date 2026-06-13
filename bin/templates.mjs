@@ -16,11 +16,12 @@ export const auth = createAuth({${google ? `
 })
 `
 
-export const libAuthClient = `"use client"
+export const libAuthClient = ({ passkey }) => `"use client"
 import { createAuthClient } from "@naeemba/next-starter/client"
 
 export const authClient = createAuthClient({
-  baseURL: process.env.NEXT_PUBLIC_BETTER_AUTH_URL,
+  baseURL: process.env.NEXT_PUBLIC_BETTER_AUTH_URL,${passkey ? "" : `
+  passkey: false,`}
 })
 `
 
@@ -30,7 +31,7 @@ import { auth } from "./auth"
 export const { getSession, requireSession } = createServer(auth)
 `
 
-export const dbSchema = `export { user, session, account, verification, passkey } from "@naeemba/next-starter/schema"
+export const dbSchema = ({ passkey }) => `export { user, session, account, verification${passkey ? ", passkey" : ""} } from "@naeemba/next-starter/schema"
 `
 
 export const drizzleConfig = `import { defineConfig } from "drizzle-kit"
@@ -51,11 +52,11 @@ import { auth } from "@/lib/auth"
 export const { GET, POST } = createAuthRoute(auth)
 `
 
-export const signInPage = `import { SignInPage } from "@naeemba/next-starter/pages/sign-in"
+export const signInPage = ({ google, passkey }) => `import { SignInPage } from "@naeemba/next-starter/pages/sign-in"
 import { authClient } from "@/lib/auth-client"
 
 export default function Page() {
-  return <SignInPage authClient={authClient} />
+  return <SignInPage authClient={authClient}${google ? " google" : ""}${passkey ? " passkey" : ""} />
 }
 `
 
