@@ -117,10 +117,13 @@ export interface CreateAuthOptions {
    * 5-per-60s ceiling on `/sign-in/magic-link`).
    *
    * The env var `BETTER_AUTH_RATE_LIMIT_DISABLED=1` forces `enabled: false`
-   * regardless of opts, unless `opts.rateLimit.enabled === true` is explicit
-   * — the env override is meant as a local-dev escape hatch, not a way to
-   * silently downgrade a production config the consumer thought they
-   * enabled.
+   * regardless of opts at the time `createAuth()` runs, unless
+   * `opts.rateLimit.enabled === true` is explicit — the env override is
+   * meant as a local-dev escape hatch, not a way to silently downgrade a
+   * production config the consumer thought they enabled. Because
+   * `createAuth()` typically runs once at module init, a long-running
+   * server must be restarted for a toggled env var to take effect
+   * (`npm run dev` re-reads it on each restart).
    */
   rateLimit?: false | {
     enabled?: boolean
