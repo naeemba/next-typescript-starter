@@ -24,14 +24,22 @@ export function PasskeyManagerPage(props: PasskeyManagerPageProps) {
     ...managerProps
   } = props
 
+  // Heading-margin and description-render gates use the same truthiness
+  // check, so a consumer passing `description=""` to suppress the body
+  // copy (effectively the same intent as `description={null}`) gets the
+  // no-description heading margin AND no empty `<p>`. Previously the
+  // heading used `description ? …` while the `<p>` rendered iff
+  // `description != null && description !== false` — passing `""` would
+  // render an empty `<p>` with the description-absent heading margin.
+  const hasDescription = Boolean(description)
   const mainStyle: CSSProperties = { maxWidth: 360, margin: "80px auto", fontFamily: "system-ui, sans-serif" }
-  const headingStyle: CSSProperties = { fontSize: 20, marginBottom: description ? 4 : 12 }
+  const headingStyle: CSSProperties = { fontSize: 20, marginBottom: hasDescription ? 4 : 12 }
   const descriptionStyle: CSSProperties = { fontSize: 13, color: "#555", marginTop: 0, marginBottom: 12 }
 
   return (
     <main style={mainStyle}>
       <h1 style={headingStyle}>{title}</h1>
-      {description != null && description !== false && <p style={descriptionStyle}>{description}</p>}
+      {hasDescription && <p style={descriptionStyle}>{description}</p>}
       <PasskeyManager {...managerProps} />
     </main>
   )
