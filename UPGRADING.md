@@ -1,5 +1,145 @@
 # Upgrading
 
+## 0.4.x → 0.5.0
+
+0.5.0 is mostly additive. The one behavioral change is on `next-starter init --force`: it no longer overwrites `db/schema.ts` or `drizzle.config.ts` — see *CLI file ownership* below. If you don't run the CLI's `--force` flag against an existing project, nothing changes.
+
+### CLI file ownership (the one behavioral change)
+
+`next-starter init --force` used to overwrite every file it scaffolds, including `db/schema.ts`. That was a footgun — consumers who'd added app tables (`blog_posts`, `inquiries`, ...) lost them.
+
+Two files are now classified as consumer-owned and **never overwritten, even with `--force`**:
+
+- `db/schema.ts` — if the `@naeemba/next-starter/schema` re-export is missing, the CLI **prepends** it instead of touching the rest. If the re-export is already present, the file is left alone.
+- `drizzle.config.ts` — preserved as-is when it exists. Consumer config (`verbose`, `casing`, `schemaFilter`, custom credentials) is not the CLI's surface.
+
+The five starter-owned shims (`lib/auth.ts`, `lib/auth-client.ts`, `lib/auth-server.ts`, `app/api/auth/[...all]/route.ts`, `app/sign-in/page.tsx`) keep their old behavior: skip if exists, overwrite with `--force`.
+
+Output legend:
+- `+ path` — file created
+- `! path  (overwritten)` — starter-owned file replaced with `--force`
+- `~ path  (merged: prepended @naeemba/next-starter/schema re-export)` — db/schema.ts gained the line
+- `= path  (exists, consumer-owned — not overwritten)` — drizzle.config.ts / db/schema.ts preserved as-is
+- `= path  (exists, use --force to overwrite)` — starter-owned file skipped
+
+### BREAKING — proxy-only: rename `/middleware` → `/proxy`, `createMiddleware` → `createProxy`
+
+Next 16 renamed `middleware.ts` → `proxy.ts` and `middleware()` → `proxy()`. Since this package targets Next ≥ 16 (the existing peer floor), only the proxy form ships. Migration is a one-line import rename:
+
+```diff
+- // middleware.ts
+- import { createMiddleware } from "@naeemba/next-starter/middleware"
+- export default createMiddleware({ protect: ["/admin/:path*"] })
++ // proxy.ts (rename the file too!)
++ import { createProxy } from "@naeemba/next-starter/proxy"
++ export default createProxy({ protect: ["/admin/:path*"] })
+
+  export const config = { matcher: ["/((?!_next/|favicon.ico|api/auth/).*)"] }
+```
+
+Three things change together:
+
+1. **Filename**: rename `middleware.ts` → `proxy.ts` at your project root. (Next 16 looks for `proxy.ts`.)
+2. **Import**: subpath `@naeemba/next-starter/middleware` → `@naeemba/next-starter/proxy`, factory `createMiddleware` → `createProxy`.
+3. **Type**: `CreateMiddlewareOptions` → `CreateProxyOptions` (same shape).
+
+The function body is identical — just the names changed. The construction-time loop guard, the `:path*` / `**` pattern compiler, the basePath-aware redirect, and the cookie-prefix knob all behave exactly as before.
+
+### Custom `proxy.ts`? `getSessionCookie` is now re-exported
+
+If you have an existing `proxy.ts` doing host canonicalization / geo gating / A/B routing and want the same cheap session-cookie check the starter's `createProxy` does internally, you can now import the helper from the same module:
+
+```ts
+import { getSessionCookie } from "@naeemba/next-starter/proxy"
+
+export function proxy(req: NextRequest) {
+  if (req.nextUrl.pathname.startsWith("/admin")) {
+    if (!getSessionCookie(req)) return NextResponse.redirect(new URL("/sign-in", req.url))
+  }
+  // ... your other proxy concerns
+  return NextResponse.next()
+}
+```
+
+(Previously you had to know that `getSessionCookie` lives in `better-auth/cookies` and reach past `@naeemba/next-starter` to import it. The function is the same one — just re-exported here for discoverability.)
+
+### Sign-in styling — `classNames` overrides
+
+If you'd been working around the inline-style defaults in `<SignInForm/>` / `<SignInPage/>` (e.g. with `!important` rules), you can now drop them in favor of `classNames`:
+
+```tsx
+<SignInPage
+  authClient={authClient}
+  classNames={{
+    main: "min-h-screen flex items-center justify-center",
+    heading: "text-3xl font-bold",
+    submitButton: "btn btn-primary w-full",
+    googleButton: "btn btn-outline w-full",
+    emailInput: "input input-bordered w-full",
+  }}
+/>
+```
+
+Contract: when a `classNames.X` key is set, the corresponding inline-style default is dropped and your CSS becomes the single source of truth for that element. Unset keys keep the built-in defaults (no behavior change). The legacy `className` prop still works and composes with `classNames.root`.
+
+Available keys (form): `root`, `googleButton`, `passkeyButton`, `divider`, `dividerLine`, `dividerLabel`, `emailLabel`, `emailInput`, `submitButton`, `error`, `sentMessage`. Page adds: `main`, `heading`, `description`.
+
+### `NEXT_PUBLIC_BETTER_AUTH_URL` is now optional
+
+For same-origin deployments, you can drop the env var entirely. `createAuthClient()` falls back to `window.location.origin` when neither `opts.baseURL` nor `NEXT_PUBLIC_BETTER_AUTH_URL` is set. The resolution order is:
+
+1. `opts.baseURL` (explicit)
+2. `NEXT_PUBLIC_BETTER_AUTH_URL` (only when non-empty)
+3. `window.location.origin` (runtime, browser only)
+
+Keep `NEXT_PUBLIC_BETTER_AUTH_URL` set if the URL the browser sees differs from `window.location.origin` (e.g. behind a proxy with a different public hostname).
+
+The CLI's scaffolded `lib/auth-client.ts` no longer wires the env var by default. Existing handwritten `createAuthClient({ baseURL: process.env.NEXT_PUBLIC_BETTER_AUTH_URL })` calls keep working — they hit case (1) above.
+
+### CLI: existing `db/index.ts` is now wired into `createAuth`
+
+If your project already has `db/index.ts` (or `src/db/index.ts`) exporting a named `db` Drizzle client, `next-starter init` now generates `lib/auth.ts` with:
+
+```ts
+import { db } from "@/db"
+import { createAuth } from "@naeemba/next-starter/auth"
+export const auth = createAuth({ db, ... })
+```
+
+instead of letting the starter's lazy proxy open a second postgres pool to the same database. Detection looks for `export const db`, `export { db }`, `export { foo as db }`, etc. — re-run `init` to pick it up.
+
+If you don't have a `db/index.ts`, nothing changes — the starter's lazy proxy seeded from `DATABASE_URL` is still the default.
+
+### CLI: obsolete `auth:generate` script
+
+The old README documented an `auth:generate` script that ran `better-auth generate --output db/auth-schema.ts`. The schema now ships from `@naeemba/next-starter/schema` — any `better-auth generate` script is dead code. `next-starter init` flags these automatically and, with `--clean-scripts`, removes them:
+
+```bash
+npx @naeemba/next-starter init --clean-scripts
+```
+
+Without the flag, the CLI only warns and leaves `package.json` alone.
+
+### CLI: `drizzle.config.ts` template now loads env
+
+Fresh installs that scaffold `drizzle.config.ts` get an `@next/env`-based env loader so `pnpm db:push` works against `.env.local` locally without a separate dotenv install:
+
+```ts
+import { loadEnvConfig } from "@next/env"
+import { defineConfig } from "drizzle-kit"
+
+loadEnvConfig(process.cwd())
+
+export default defineConfig({
+  schema: "./db/schema.ts",
+  out: "./drizzle",
+  dialect: "postgresql",
+  dbCredentials: { url: process.env.DATABASE_URL! },
+})
+```
+
+(`@next/env` ships with `next`, already a peer dependency — no new install.) Existing `drizzle.config.ts` files are preserved per the file-ownership rule above.
+
 ## 0.3.x → 0.4.0
 
 ### Optional peer dependencies

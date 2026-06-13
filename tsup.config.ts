@@ -13,7 +13,7 @@ export default defineConfig({
     "pages/sign-in/index":         "src/pages/sign-in/index.tsx",
     "pages/passkey-manager/index": "src/pages/passkey-manager/index.tsx",
     "server/index":                "src/server/index.ts",
-    "middleware/index":            "src/middleware/index.ts",
+    "proxy/index":                 "src/proxy/index.ts",
   },
   format: ["esm"],
   dts: true,

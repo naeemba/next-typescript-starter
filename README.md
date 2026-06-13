@@ -38,6 +38,9 @@ BETTER_AUTH_SECRET=<32+ char random string>   # openssl rand -hex 32
 BETTER_AUTH_URL=https://app.example.com
 EMAIL_FROM=auth@example.com                    # optional in dev, required for Resend in prod
 RESEND_API_KEY=...                             # optional — when unset, magic links log to stdout
+# Optional: NEXT_PUBLIC_BETTER_AUTH_URL — only set when the public URL the
+# browser must call differs from window.location.origin (e.g. a proxy in
+# front with a different hostname). Otherwise the client derives it at runtime.
 # Note: postgres, @react-email/*, @better-auth/passkey, and resend are optional
 # peer dependencies. Install only the ones you actually use — see UPGRADING.md.
 ```
@@ -66,6 +69,11 @@ export const { signIn, signOut, useSession } = authClient
 > Drop the `passkeyClient` import (and the `passkey:` field) to skip
 > passkey support — the consumer bundle then excludes
 > `@better-auth/passkey` entirely.
+>
+> `baseURL` resolution: `opts.baseURL` → `NEXT_PUBLIC_BETTER_AUTH_URL` →
+> `window.location.origin`. For same-origin deployments you can drop both
+> the env var and the option. Set one only when the public URL the client
+> must call differs from what the browser sees.
 
 ### lib/auth-server.ts
 
@@ -102,7 +110,11 @@ export * from "@naeemba/next-starter/schema"
 ### drizzle.config.ts
 
 ```ts
+import { loadEnvConfig } from "@next/env"
 import { defineConfig } from "drizzle-kit"
+
+loadEnvConfig(process.cwd())
+
 export default defineConfig({
   schema: "./db/schema.ts",
   out: "./drizzle",
@@ -111,7 +123,9 @@ export default defineConfig({
 })
 ```
 
-Why a `db/schema.ts` shim? drizzle-kit does not follow symlinks and requires a `.ts` schema source — so the cleanest pattern is a one-line re-export that drizzle-kit can read directly.
+Why `loadEnvConfig`? drizzle-kit runs as a CLI outside Next.js, so it doesn't auto-read `.env.local` / `.env`. `@next/env` ships with `next` (already a peer dep) and applies Next's env file precedence so `pnpm db:push` works locally with no extra install.
+
+Why a `db/schema.ts` shim? drizzle-kit does not follow symlinks and requires a `.ts` schema source — so the cleanest pattern is a one-line re-export that drizzle-kit can read directly. You can add app tables to `db/schema.ts` alongside the re-export; the CLI's merge behavior preserves them on re-init.
 
 ## First-time setup
 
@@ -200,13 +214,15 @@ export default async function Page() {
 
 Use `getSession` instead of `requireSession` if you want to handle the unauthenticated case yourself (it returns `null` rather than redirecting).
 
-## Protecting routes with middleware
+## Protecting routes with proxy.ts
+
+Next 16 renamed `middleware.ts` → `proxy.ts` and `middleware()` → `proxy()`. This package targets Next ≥ 16, so only the proxy form ships:
 
 ```ts
-// middleware.ts (project root)
-import { createMiddleware } from "@naeemba/next-starter/middleware"
+// proxy.ts (project root)
+import { createProxy } from "@naeemba/next-starter/proxy"
 
-export default createMiddleware({
+export default createProxy({
   protect: ["/admin/:path*", "/dashboard/:path*"],
   signInPath: "/sign-in",         // default
 })
@@ -214,7 +230,24 @@ export default createMiddleware({
 export const config = { matcher: ["/((?!_next/|favicon.ico|api/auth/).*)"] }
 ```
 
-The middleware checks for the better-auth session cookie's *presence* — it does not validate the session against the database (that would require Node runtime; middleware runs on the Edge). Unauthenticated requests are redirected to `signInPath?callbackUrl=<original>`. The real auth gate stays at the server-component level via `requireSession()`.
+The helper checks for the better-auth session cookie's *presence* — it does not validate the session against the database (that would require Node runtime; the Edge runtime can't reach Postgres). Unauthenticated requests are redirected to `signInPath?callbackUrl=<original>`. The real auth gate stays at the server-component level via `requireSession()`.
+
+### Custom proxy.ts
+
+If you already have a `proxy.ts` doing other work (host canonicalization, geo gating, A/B routing), import the cookie helper directly instead of wrapping `createProxy`:
+
+```ts
+import { type NextRequest, NextResponse } from "next/server"
+import { getSessionCookie } from "@naeemba/next-starter/proxy"
+
+export function proxy(req: NextRequest) {
+  if (req.nextUrl.pathname.startsWith("/admin") && !getSessionCookie(req)) {
+    return NextResponse.redirect(new URL("/sign-in", req.url))
+  }
+  // your other concerns ...
+  return NextResponse.next()
+}
+```
 
 ## Dev experience
 
@@ -245,7 +278,7 @@ This package is ESM-only with subpath `exports`. Your consumer `tsconfig.json` *
 | `@naeemba/next-starter/pages/sign-in` | `SignInForm` (headless) + `SignInPage` (with chrome) — supports `google`, `passkey`, `magicLink` props |
 | `@naeemba/next-starter/pages/passkey-manager` | `PasskeyManager` — "Add a passkey" button for settings pages |
 | `@naeemba/next-starter/server` | `createServer(auth)` — returns `getSession`, `requireSession` |
-| `@naeemba/next-starter/middleware` | `createMiddleware` Edge-safe helper for redirecting unauthenticated traffic to your sign-in page. |
+| `@naeemba/next-starter/proxy` | `createProxy` Edge-safe helper for redirecting unauthenticated traffic to your sign-in page (Next 16 `proxy.ts` convention). Also re-exports `getSessionCookie` for custom proxies. |
 
 ## Design and rationale
 
@@ -255,7 +288,30 @@ The re-export shim pattern is deliberate: it keeps the package's surface minimal
 
 ## Styling
 
-`<SignInForm/>`, `<SignInPage/>`, and `<PasskeyManager/>` ship with **minimal inline styles** (plain HTML attributes) — no CSS file, no Tailwind classes, no styled-components dependency. Every component accepts a `className` prop you can target with your own CSS / Tailwind layer. The inline styles are intended as a sensible default while bootstrapping; production apps should override them.
+`<SignInForm/>`, `<SignInPage/>`, and `<PasskeyManager/>` ship with **minimal inline styles** (plain HTML attributes) — no CSS file, no Tailwind classes, no styled-components dependency.
+
+For one-off targeting, every component takes a `className` prop. For full restyling (Tailwind, shadcn, your design system), use `classNames`:
+
+```tsx
+<SignInPage
+  authClient={authClient}
+  classNames={{
+    main: "min-h-screen flex items-center justify-center bg-background",
+    heading: "text-3xl font-bold tracking-tight",
+    submitButton: "btn btn-primary w-full",
+    googleButton: "btn btn-outline w-full",
+    emailInput: "input input-bordered w-full",
+    emailLabel: "text-sm font-medium",
+    error: "text-sm text-destructive mt-1",
+  }}
+/>
+```
+
+When a `classNames.X` key is set, the corresponding inline-style default is dropped for that element — your CSS becomes the single source of truth without `!important`. Unset keys keep the built-in defaults so you can override piecemeal.
+
+Form keys: `root`, `googleButton`, `passkeyButton`, `divider`, `dividerLine`, `dividerLabel`, `emailLabel`, `emailInput`, `submitButton`, `error`, `sentMessage`. Page adds: `main`, `heading`, `description`.
+
+For complete control, the shipped page is intentionally minimal — copy `app/sign-in/page.tsx` and call `authClient.signIn.magicLink` / `social` / `passkey` directly.
 
 ## License
 
