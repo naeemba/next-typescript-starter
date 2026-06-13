@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
+import { setupAuthEnv, restoreAuthEnv } from "./helpers/auth-internals"
 
 const sendMagicLinkSpy = vi.fn<(args: any) => Promise<void>>(async () => {})
 vi.mock("../src/email/index", async (orig) => {
@@ -6,24 +7,14 @@ vi.mock("../src/email/index", async (orig) => {
   return { ...actual, sendMagicLink: sendMagicLinkSpy }
 })
 
-const validEnv = {
-  DATABASE_URL: "postgres://user:pass@localhost:5432/db",
-  BETTER_AUTH_SECRET: "x".repeat(32),
-  BETTER_AUTH_URL: "https://app.example.com",
-  EMAIL_FROM: "auth@example.com",
-}
-
 describe("createAuth — magicLink.allowlist", () => {
-  let savedEnv: NodeJS.ProcessEnv
-
   beforeEach(() => {
-    savedEnv = { ...process.env }
-    Object.assign(process.env, validEnv)
+    setupAuthEnv()
     sendMagicLinkSpy.mockClear()
     vi.resetModules()
   })
   afterEach(() => {
-    process.env = savedEnv
+    restoreAuthEnv()
   })
 
   it("not called when allowlist returns false", async () => {

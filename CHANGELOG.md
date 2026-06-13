@@ -2,6 +2,20 @@
 
 All notable changes to `@naeemba/next-starter`. Migration steps live in [UPGRADING.md](./UPGRADING.md).
 
+## 0.4.0
+
+### Added
+
+- `createAuth({ singleAdmin: "owner@example.com" })` — string-or-array shortcut that auto-fills `magicLink.allowlist` and `google.allowlist` with a case-insensitive exact match. Google additionally rejects `emailVerified=false` profiles. Explicit allowlists on either provider override `singleAdmin` for that provider.
+- `@naeemba/next-starter/middleware` subpath exporting `createMiddleware({ protect, signInPath?, callbackParam?, cookiePrefix? })`. Edge-runtime safe; checks for the better-auth session cookie's presence and redirects to `signInPath` with `callbackUrl` set when missing. The real session gate stays at the server-component level via `requireSession`.
+- `next-starter init` CLI scaffolder — `npx @naeemba/next-starter init [target]` writes the seven shim files documented in the README plus an `.env.example`. Flags: `--force`, `--src`, `--no-src`, `--no-google`, `--no-passkey`, `--skip-env`.
+
+### Changed
+
+- `postgres`, `@react-email/components`, `@react-email/render`, and `resend` are now **optional peer dependencies** instead of hard dependencies. Existing consumers' lockfiles are unaffected; fresh installs surface a peer warning if the relevant package is omitted. Consumers who supply their own db client / email template / Resend alternative can skip the install cost. See UPGRADING.md for details.
+- `package.json` now declares a `bin` mapping for the `next-starter` CLI; the published tarball includes `bin/`.
+- Internal: split the default magic-link template into its own entry (`dist/email/templates/magic-link-lazy.js`) so loading `email/index.js` no longer eagerly pulls `@react-email/components`. Not part of the public `exports` map.
+
 ## 0.3.0
 
 ### Added

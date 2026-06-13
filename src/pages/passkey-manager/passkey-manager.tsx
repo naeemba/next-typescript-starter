@@ -86,7 +86,7 @@ export function PasskeyManager(props: PasskeyManagerProps) {
   }
 
   if (!isSupported) {
-    return <div className={className}>{unsupportedCopy}</div>
+    return unsupportedCopy ? <div className={className}>{unsupportedCopy}</div> : null
   }
 
   const disabled = status === "adding" || status === "added"

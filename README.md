@@ -20,6 +20,14 @@ Each method is opt-in. Enabling one does not require the others.
 npm install @naeemba/next-starter
 ```
 
+Then scaffold the seven shim files automatically:
+
+```bash
+npx @naeemba/next-starter init
+```
+
+Or skip the CLI and create them by hand (see [Setup files in your app](#setup-files-in-your-app)).
+
 Peer dependencies: `next >= 16`, `react >= 19`, `react-dom >= 19`. Node `>= 20`.
 
 ## Env vars
@@ -30,6 +38,8 @@ BETTER_AUTH_SECRET=<32+ char random string>   # openssl rand -hex 32
 BETTER_AUTH_URL=https://app.example.com
 EMAIL_FROM=auth@example.com                    # optional in dev, required for Resend in prod
 RESEND_API_KEY=...                             # optional — when unset, magic links log to stdout
+# Note: postgres, @react-email/*, @better-auth/passkey, and resend are optional
+# peer dependencies. Install only the ones you actually use — see UPGRADING.md.
 ```
 
 ## Setup files in your app
@@ -41,16 +51,21 @@ import { createAuth } from "@naeemba/next-starter/auth"
 export const auth = createAuth()
 ```
 
-`createAuth` accepts options for `allowlist` (restrict sign-in to specific email addresses or domains), `session` (override session cookie / expiry settings), and a custom `sendMagicLinkEmail` function if you want to control the email template or provider.
+`createAuth` accepts options for `magicLink` (custom expiry, `allowlist`, custom `email` template), `session` (override session cookie / expiry settings), `google`, `passkey`, `singleAdmin` (lock sign-in to one or more emails), and `accountLinking`.
 
 ### lib/auth-client.ts
 
 ```ts
 "use client"
 import { createAuthClient } from "@naeemba/next-starter/client"
-export const authClient = createAuthClient()
+import { passkeyClient } from "@better-auth/passkey/client"
+export const authClient = createAuthClient({ passkey: passkeyClient })
 export const { signIn, signOut, useSession } = authClient
 ```
+
+> Drop the `passkeyClient` import (and the `passkey:` field) to skip
+> passkey support — the consumer bundle then excludes
+> `@better-auth/passkey` entirely.
 
 ### lib/auth-server.ts
 
@@ -127,6 +142,19 @@ Render the button:
 <SignInForm authClient={authClient} google />
 ```
 
+## Locking sign-in to one or more emails
+
+For solo apps or admin tools, use the `singleAdmin` shortcut:
+
+```ts
+createAuth({
+  singleAdmin: "owner@example.com",          // or ["a@x.com", "b@x.com"]
+  google: { /* clientId/secret from env */ },
+})
+```
+
+`singleAdmin` auto-fills `magicLink.allowlist` and `google.allowlist` with a case-insensitive exact match. Google additionally rejects sign-in if the OAuth profile's email isn't verified. If you also pass an explicit `magicLink.allowlist` or `google.allowlist`, the explicit callback wins for that provider.
+
 ## Enabling passkeys
 
 ```ts
@@ -172,6 +200,22 @@ export default async function Page() {
 
 Use `getSession` instead of `requireSession` if you want to handle the unauthenticated case yourself (it returns `null` rather than redirecting).
 
+## Protecting routes with middleware
+
+```ts
+// middleware.ts (project root)
+import { createMiddleware } from "@naeemba/next-starter/middleware"
+
+export default createMiddleware({
+  protect: ["/admin/:path*", "/dashboard/:path*"],
+  signInPath: "/sign-in",         // default
+})
+
+export const config = { matcher: ["/((?!_next/|favicon.ico|api/auth/).*)"] }
+```
+
+The middleware checks for the better-auth session cookie's *presence* — it does not validate the session against the database (that would require Node runtime; middleware runs on the Edge). Unauthenticated requests are redirected to `signInPath?callbackUrl=<original>`. The real auth gate stays at the server-component level via `requireSession()`.
+
 ## Dev experience
 
 If `RESEND_API_KEY` is unset, the magic link is written to your server logs in a line that looks like:
@@ -201,6 +245,7 @@ This package is ESM-only with subpath `exports`. Your consumer `tsconfig.json` *
 | `@naeemba/next-starter/pages/sign-in` | `SignInForm` (headless) + `SignInPage` (with chrome) — supports `google`, `passkey`, `magicLink` props |
 | `@naeemba/next-starter/pages/passkey-manager` | `PasskeyManager` — "Add a passkey" button for settings pages |
 | `@naeemba/next-starter/server` | `createServer(auth)` — returns `getSession`, `requireSession` |
+| `@naeemba/next-starter/middleware` | `createMiddleware` Edge-safe helper for redirecting unauthenticated traffic to your sign-in page. |
 
 ## Design and rationale
 

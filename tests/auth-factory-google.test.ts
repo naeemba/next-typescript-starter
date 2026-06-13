@@ -1,22 +1,9 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest"
 import { createAuth } from "../src/auth/index.js"
+import { setupAuthEnv, restoreAuthEnv, authOpts } from "./helpers/auth-internals.js"
 
-const ORIGINAL_ENV = { ...process.env }
-
-beforeEach(() => {
-  process.env = {
-    ...ORIGINAL_ENV,
-    DATABASE_URL: "postgres://u:p@h/d",
-    BETTER_AUTH_SECRET: "x".repeat(32),
-    BETTER_AUTH_URL: "https://app.example.com",
-    GOOGLE_CLIENT_ID: undefined,
-    GOOGLE_CLIENT_SECRET: undefined,
-  }
-})
-
-afterEach(() => {
-  process.env = { ...ORIGINAL_ENV }
-})
+beforeEach(() => setupAuthEnv({ GOOGLE_CLIENT_ID: undefined, GOOGLE_CLIENT_SECRET: undefined }))
+afterEach(() => restoreAuthEnv())
 
 type AuthOpts = {
   socialProviders?: {
@@ -43,9 +30,7 @@ type AuthOpts = {
   }
 }
 
-function opts(auth: unknown): AuthOpts {
-  return (auth as { options: AuthOpts }).options
-}
+const opts = (auth: unknown) => authOpts<AuthOpts>(auth)
 
 describe("createAuth({ google })", () => {
   it("wires the google socialProvider when clientId/Secret are passed as opts", () => {
@@ -163,5 +148,18 @@ describe("createAuth({ google })", () => {
     // Magic-link signups, account-create flows from other providers, and any
     // direct user.create call must NOT be gated by google.allowlist.
     expect(opts(auth).databaseHooks?.user?.create?.before).toBeUndefined()
+  })
+
+  // Regression: a stale/malformed DATABASE_URL in env must not break the
+  // opts.db path. parseEnv rejects non-postgres URLs, so without the placeholder
+  // override `createAuth({ db, google: {...} })` would fail for a consumer
+  // using a different driver but who still has DATABASE_URL set.
+  it("ignores a non-postgres process.env.DATABASE_URL when opts.db is provided", () => {
+    process.env.DATABASE_URL = "mysql://x:y@localhost/z"
+    process.env.GOOGLE_CLIENT_ID = "id"
+    process.env.GOOGLE_CLIENT_SECRET = "secret"
+    expect(() =>
+      createAuth({ db: {} as never, google: {} }),
+    ).not.toThrow()
   })
 })

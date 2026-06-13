@@ -39,8 +39,15 @@ describe("createDbOptionsFromEnv", () => {
     expect(createDbOptionsFromEnv({ DATABASE_PREPARE: "true" })).toEqual({ prepare: true })
   })
 
-  it("ignores DATABASE_PREPARE values other than 'true'/'false'", () => {
-    expect(createDbOptionsFromEnv({ DATABASE_PREPARE: "yes" })).toEqual({})
+  // The `import { db }` proxy goes through createDbOptionsFromEnv only — it
+  // never touches parseEnv. A silent drop on a typo'd DATABASE_PREPARE=fals
+  // would default back to prepare:true and ship prepared statements to a
+  // transaction-pool pgBouncer in prod. Fail loud at boot instead.
+  it("throws when DATABASE_PREPARE is not 'true' or 'false'", () => {
+    expect(() => createDbOptionsFromEnv({ DATABASE_PREPARE: "yes" })).toThrow(
+      /DATABASE_PREPARE.*true.*false/,
+    )
+    expect(() => createDbOptionsFromEnv({ DATABASE_PREPARE: "fals" })).toThrow(/DATABASE_PREPARE/)
   })
 
   it("parses DATABASE_POOL_MAX and DATABASE_IDLE_TIMEOUT as numbers", () => {
@@ -49,11 +56,33 @@ describe("createDbOptionsFromEnv", () => {
     ).toEqual({ max: 20, idleTimeout: 30 })
   })
 
-  it("drops non-numeric pool sizes silently", () => {
-    expect(createDbOptionsFromEnv({ DATABASE_POOL_MAX: "not-a-number" })).toEqual({})
+  it("throws on a non-numeric DATABASE_POOL_MAX", () => {
+    expect(() => createDbOptionsFromEnv({ DATABASE_POOL_MAX: "not-a-number" })).toThrow(
+      /DATABASE_POOL_MAX/,
+    )
   })
 
-  it("rejects negative pool sizes and timeouts", () => {
-    expect(createDbOptionsFromEnv({ DATABASE_POOL_MAX: "-1" })).toEqual({})
+  it("throws when DATABASE_POOL_MAX is zero or negative", () => {
+    expect(() => createDbOptionsFromEnv({ DATABASE_POOL_MAX: "-1" })).toThrow(/DATABASE_POOL_MAX/)
+    expect(() => createDbOptionsFromEnv({ DATABASE_POOL_MAX: "0" })).toThrow(/DATABASE_POOL_MAX/)
+  })
+
+  it("throws on a non-numeric or non-positive DATABASE_IDLE_TIMEOUT", () => {
+    expect(() => createDbOptionsFromEnv({ DATABASE_IDLE_TIMEOUT: "abc" })).toThrow(
+      /DATABASE_IDLE_TIMEOUT/,
+    )
+    expect(() => createDbOptionsFromEnv({ DATABASE_IDLE_TIMEOUT: "-1" })).toThrow(
+      /DATABASE_IDLE_TIMEOUT/,
+    )
+  })
+
+  // postgres.js treats idle_timeout=0 as "never close idle connections" — the
+  // exact footgun the createDb JSDoc warns against. Accepting a typo'd 0
+  // would silently re-enable the connection-leak mode this env var exists to
+  // override. Reject it at boot with a message explaining the trap.
+  it("throws on DATABASE_IDLE_TIMEOUT=0 (postgres.js no-timeout footgun)", () => {
+    expect(() => createDbOptionsFromEnv({ DATABASE_IDLE_TIMEOUT: "0" })).toThrow(
+      /DATABASE_IDLE_TIMEOUT.*positive integer/,
+    )
   })
 })

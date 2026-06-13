@@ -1,6 +1,5 @@
-import { render } from "@react-email/render"
 import type { ReactElement } from "react"
-import { MagicLinkEmail } from "./templates/magic-link.js"
+import { loadOptionalPeerAsync } from "../internal/optional-peer.js"
 import { sendViaConsole, type EmailArgs as TransportArgs } from "./console.js"
 import { sendViaResend } from "./resend.js"
 
@@ -28,7 +27,14 @@ export async function sendEmail(args: EmailArgs): Promise<void> {
   }
 
   let html = args.html
-  if (!html && args.react) html = await render(args.react)
+  if (!html && args.react) {
+    const { render } = await loadOptionalPeerAsync(
+      "@react-email/render",
+      () => import("@react-email/render"),
+      "the sendEmail React-template path",
+    )
+    html = await render(args.react)
+  }
 
   const text = args.text ?? (html ? stripTags(html) : "")
   const to = Array.isArray(args.to) ? args.to.join(", ") : args.to
@@ -88,7 +94,8 @@ async function defaultMagicLinkFields(input: {
   expiresIn: number
   appName?: string
 }): Promise<MagicLinkEmailFields> {
-  const html = await render(MagicLinkEmail({ url: input.url, appName: input.appName }))
+  const { renderDefaultMagicLink } = await import("./templates/magic-link-lazy.js")
+  const html = await renderDefaultMagicLink({ url: input.url, appName: input.appName })
   return {
     subject: "Sign in to your account",
     text: `Sign in: ${input.url}`,

@@ -8,7 +8,7 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write
       id-token: write
 
     services:
@@ -31,9 +31,25 @@ jobs:
       BETTER_AUTH_URL: http://localhost:3000
       RESEND_API_KEY: ""
       EMAIL_FROM: auth@example.com
+      # Matches both heading shapes: `## 0.4.0` (hand-written) and
+      # `## [0.4.0](url) (date)` (conventional-changelog). `[[]?` (not `(\[)?`)
+      # so `awk -v re=...` doesn't strip the backslash and collapse the
+      # optional group into a `[` class-open. Boundary class
+      # `[^0-9.A-Za-z+-]` keeps `0.4.0` from matching `0.4.0-beta.1`,
+      # `0.4.0+build.7`, or `0.40`. $VERSION metachars (`.`, `+`) are
+      # escaped via character classes at the consuming step before
+      # substitution — `0\.4\.0\+build\.7` is interpretation-dependent
+      # across awk flavors (BSD awk drops `\+` and the `+` becomes a
+      # quantifier), `0[.]4[.]0[+]build[.]7` is portable.
+      VERSION_HEADING_RE: '^## [[]?VERSION_PLACEHOLDER([^0-9.A-Za-z+-]|$)'
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history + tags so `conventional-changelog -r 1` can walk
+          # back to the previous tag when auto-generating CHANGELOG entries.
+          fetch-depth: 0
+          fetch-tags: true
 
       - uses: actions/setup-node@v4
         with:
@@ -73,5 +89,83 @@ jobs:
       - name: E2E smoke test
         run: npm --workspace examples/basic run test:e2e
 
+      - name: Generate CHANGELOG entry for this version (if missing)
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          # Escape regex metachars before substituting $VERSION into the awk
+          # ERE. Without this, `0.4.0+build.7` is read by awk as `0` followed
+          # by `+` (one-or-more of the preceding `0`), then `build.7` — so
+          # the regex matches `## 0.4.0build.7` (no plus) but NOT the actual
+          # `## 0.4.0+build.7` heading, and the CHANGELOG-presence check
+          # falsely reports the section as missing.
+          VERSION_ESC=$(printf '%s' "$VERSION" | sed -e 's/\./[.]/g' -e 's/+/[+]/g')
+          RE="${VERSION_HEADING_RE/VERSION_PLACEHOLDER/$VERSION_ESC}"
+          if awk -v re="$RE" '$0 ~ re { found=1; exit } END { exit !found }' CHANGELOG.md; then
+            echo "CHANGELOG already has section for v$VERSION; skipping auto-generation."
+          else
+            echo "No CHANGELOG entry for v$VERSION — auto-generating from conventional commits."
+            npm run changelog
+          fi
+
       - name: Publish to npm
         run: npm publish --provenance --access public
+
+      # Create the GitHub Release BEFORE pushing the regenerated CHANGELOG.
+      # If the push step ever fails (non-fast-forward, branch protection, etc.)
+      # we'd still have a matching GH release for the just-published npm version.
+      # Step is idempotent so re-runs after a partial success can recover.
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          if gh release view "v$VERSION" >/dev/null 2>&1; then
+            echo "Release v$VERSION already exists — skipping."
+            exit 0
+          fi
+          # See the generate step above for why $VERSION needs metachar
+          # escaping before substitution into the awk ERE.
+          VERSION_ESC=$(printf '%s' "$VERSION" | sed -e 's/\./[.]/g' -e 's/+/[+]/g')
+          RE="${VERSION_HEADING_RE/VERSION_PLACEHOLDER/$VERSION_ESC}"
+          NOTES_FILE=$(mktemp)
+          awk -v re="$RE" '
+            $0 ~ re      { p=1; next }
+            p && /^## / { exit }
+            p           { print }
+          ' CHANGELOG.md > "$NOTES_FILE"
+          if [ ! -s "$NOTES_FILE" ]; then
+            echo "No CHANGELOG entry for $VERSION — using auto-generated notes." >&2
+            gh release create "v$VERSION" --title "v$VERSION" --generate-notes
+          else
+            gh release create "v$VERSION" --title "v$VERSION" --notes-file "$NOTES_FILE"
+          fi
+
+      - name: Push regenerated CHANGELOG back to main
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          if git diff --quiet -- CHANGELOG.md; then
+            echo "CHANGELOG.md unchanged — nothing to push."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # Save the regenerated CHANGELOG, switch to main, replay the change, push.
+          cp CHANGELOG.md /tmp/CHANGELOG.new
+          # Retry on non-fast-forward (a maintainer commit landing on main
+          # mid-release would otherwise reject the push and break the workflow).
+          for attempt in 1 2 3; do
+            git fetch origin main
+            git checkout -B main origin/main
+            cp /tmp/CHANGELOG.new CHANGELOG.md
+            git add CHANGELOG.md
+            # `[skip ci]` prevents this push from re-triggering the CI workflow.
+            git commit -m "chore(release): regenerate CHANGELOG.md for v$VERSION [skip ci]"
+            if git push origin main; then
+              exit 0
+            fi
+            echo "Push attempt $attempt rejected — rebasing onto fresh origin/main and retrying." >&2
+            git reset --hard HEAD~1
+            sleep 2
+          done
+          echo "Failed to push CHANGELOG.md after 3 attempts." >&2
+          exit 1

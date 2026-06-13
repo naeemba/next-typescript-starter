@@ -1,5 +1,71 @@
 # Upgrading
 
+## 0.3.x → 0.4.0
+
+### Optional peer dependencies
+
+`postgres`, `@react-email/components`, `@react-email/render`, `resend`, and `@better-auth/passkey` moved from `dependencies` to `peerDependencies` (with `peerDependenciesMeta.optional = true`). If you installed `@naeemba/next-starter` with an `npm i` that pinned a lockfile, you already have these packages and nothing changes. On a fresh install you'll see a peer warning if you skip one — install whichever you use:
+
+```bash
+# Default path (postgres + Resend + the built-in magic-link template + passkey)
+npm i postgres @react-email/components @react-email/render resend @better-auth/passkey
+
+# BYO db client (createAuth({ db })) — skip postgres
+npm i @react-email/components @react-email/render resend @better-auth/passkey
+
+# Custom magic-link email (magicLink: { email: ... }) — skip @react-email/*
+npm i postgres resend @better-auth/passkey
+
+# BYO transport (skip the built-in Resend transport) — skip resend
+npm i postgres @react-email/components @react-email/render @better-auth/passkey
+
+# No passkey support — skip @better-auth/passkey
+npm i postgres @react-email/components @react-email/render resend
+```
+
+`@better-auth/passkey` is loaded lazily on the server (via `loadOptionalPeer` inside `createAuth({ passkey })`) and via factory injection on the client (`createAuthClient({ passkey: passkeyClient })`). If you don't enable passkey on either side, the dep is never resolved and your bundle excludes it.
+
+If a runtime path needs a peer that isn't installed, you'll see an instructional error like:
+
+> Optional peer 'postgres' is not installed.
+> Install it with: npm i postgres
+> Used by: createDb / DATABASE_URL
+
+### New CLI
+
+`npx @naeemba/next-starter init` now scaffolds the seven shim files for you. If you wired the package by hand under 0.3.x, you don't need to do anything — your existing files keep working.
+
+### `singleAdmin` shortcut
+
+If your `0.3.x` consumer code did this:
+
+```ts
+createAuth({
+  magicLink: { allowlist: (email) => email === "owner@example.com" },
+  google: { allowlist: (p) => p.email === "owner@example.com" && p.emailVerified },
+})
+```
+
+You can collapse it to:
+
+```ts
+createAuth({ singleAdmin: "owner@example.com", google: {} })
+```
+
+The explicit allowlist forms still work and continue to override `singleAdmin` for that provider.
+
+### `createMiddleware`
+
+Optional. If you want a fast bounce for unauthenticated traffic to protected routes, add a `middleware.ts` at the project root:
+
+```ts
+import { createMiddleware } from "@naeemba/next-starter/middleware"
+export default createMiddleware({ protect: ["/admin/:path*", "/dashboard/:path*"] })
+export const config = { matcher: ["/((?!_next/|favicon.ico|api/auth/).*)"] }
+```
+
+Server components should still call `requireSession()` — middleware checks cookie presence only, not validity.
+
 ## 0.2.x → 0.3.0
 
 0.3.0 is additive. Existing 0.2.x consumers need no code changes unless they opt in to one of the new methods.
