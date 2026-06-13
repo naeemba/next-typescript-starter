@@ -88,9 +88,12 @@ export function createMiddleware(opts: CreateMiddlewareOptions) {
   // The runtime short-circuit below stays as a defense-in-depth fallback,
   // but the boot-time error is the real fix: it surfaces the misconfig in
   // the consumer's logs at module load instead of as a browser redirect loop.
+  // Probe both trailing-slash variants — that covers every shape of
+  // `signInPath` (`/sign-in`, `/sign-in/`, or any custom path with or
+  // without a trailing slash) without re-probing the same string twice.
   const signInPathNoSlash = signInPath.replace(/\/+$/, "")
   const matchesSignIn = (re: RegExp) =>
-    re.test(signInPath) || re.test(signInPathNoSlash) || re.test(`${signInPathNoSlash}/`)
+    re.test(signInPathNoSlash) || re.test(`${signInPathNoSlash}/`)
   const offending = opts.protect.find((_p, i) => matchesSignIn(compiled[i]!))
   if (offending !== undefined) {
     throw new Error(
