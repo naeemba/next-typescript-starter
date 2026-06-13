@@ -107,6 +107,25 @@ export interface CreateAuthOptions {
    * email matches.
    */
   singleAdmin?: string | string[]
+  /**
+   * Better-auth rate-limit knob. Pass `false` to disable entirely.
+   * Pass an object to set `window` / `max` / `storage`.
+   * Omit to inherit better-auth's defaults (enabled in production,
+   * `window: 10`, `max: 100`, plus the magic-link plugin's own internal
+   * 5-per-60s ceiling on `/sign-in/magic-link`).
+   *
+   * The env var `BETTER_AUTH_RATE_LIMIT_DISABLED=1` forces `enabled: false`
+   * regardless of opts, unless `opts.rateLimit.enabled === true` is explicit
+   * — the env override is meant as a local-dev escape hatch, not a way to
+   * silently downgrade a production config the consumer thought they
+   * enabled.
+   */
+  rateLimit?: false | {
+    enabled?: boolean
+    window?: number
+    max?: number
+    storage?: "memory" | "secondary-storage"
+  }
 }
 
 export function createAuth(opts: CreateAuthOptions = {}): Auth {
@@ -258,6 +277,26 @@ export function createAuth(opts: CreateAuthOptions = {}): Auth {
       ...(opts.session.expiresIn !== undefined && { expiresIn: opts.session.expiresIn }),
       ...(opts.session.updateAge !== undefined && { updateAge: opts.session.updateAge }),
     }
+  }
+
+  // The env-var escape hatch is intentionally a *force-disable*, not a
+  // "set the default to disabled". A consumer who explicitly opted into
+  // `{ enabled: true }` shouldn't get silently downgraded by an env var
+  // they may have inherited from a parent process or a CI runner. The
+  // value comparison is `=== "1"` (not truthy) so an unintentional
+  // export of `BETTER_AUTH_RATE_LIMIT_DISABLED=` (empty string) doesn't
+  // trip the disable path either.
+  const envForceDisable = process.env.BETTER_AUTH_RATE_LIMIT_DISABLED === "1"
+
+  if (opts.rateLimit === false) {
+    config.rateLimit = { enabled: false }
+  } else if (opts.rateLimit !== undefined) {
+    config.rateLimit =
+      envForceDisable && opts.rateLimit.enabled !== true
+        ? { ...opts.rateLimit, enabled: false }
+        : { ...opts.rateLimit }
+  } else if (envForceDisable) {
+    config.rateLimit = { enabled: false }
   }
 
   return betterAuth(config) as unknown as Auth
