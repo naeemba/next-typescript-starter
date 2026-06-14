@@ -2,6 +2,11 @@
 
 All notable changes to `@naeemba/next-starter`. Migration steps live in [UPGRADING.md](./UPGRADING.md).
 
+## [0.7.1](https://github.com/naeemba/next-typescript-starter/compare/v0.7.0...v0.7.1) (2026-06-14)
+
+### Bug Fixes
+
+* **sign-in:** default-navigate after passkey sign-in when onSignedIn is unset ([39b631f](https://github.com/naeemba/next-typescript-starter/commit/39b631f1c8a3a379d1cf240ac71c88d8106f08ba))
 ## 0.7.0
 
 ### Breaking
