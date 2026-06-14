@@ -127,6 +127,80 @@ describe("<SignInForm/> passkey prop", () => {
     fireEvent.click(await screen.findByRole("button", { name: /sign in with passkey/i }))
     await waitFor(() => expect(screen.queryByText(/no creds/i)).not.toBeNull())
   })
+
+  // better-auth's signIn.passkey() doesn't redirect on its own (unlike social/OAuth).
+  // Without an explicit fallback the form would set the session cookie and then strand
+  // the user on /sign-in — the original bug. These tests lock the new default-navigation
+  // contract: navigate when onSignedIn is absent, defer to the consumer when present.
+  describe("default navigation on success", () => {
+    // jsdom marks window.location.assign as non-configurable, so vi.spyOn fails;
+    // a spread copy of Location would drop its prototype getters (search,
+    // pathname, …) and break resolveCallbackUrl; and a Proxy whose target IS
+    // the real Location can't override `assign` (the non-configurable-data
+    // invariant forces the Proxy to return the original method). An empty
+    // target sidesteps the invariant — we forward every other read to the
+    // live Location ourselves so URL state stays correct.
+    let assignMock: ReturnType<typeof vi.fn>
+    const originalLocation = window.location
+    beforeEach(() => {
+      window.history.replaceState({}, "", "/sign-in")
+      assignMock = vi.fn()
+      Object.defineProperty(window, "location", {
+        value: new Proxy({}, {
+          get(_target, key) {
+            if (key === "assign") return assignMock
+            const value = Reflect.get(originalLocation, key)
+            return typeof value === "function" ? value.bind(originalLocation) : value
+          },
+        }),
+        configurable: true,
+        writable: true,
+      })
+    })
+    afterEach(() => {
+      Object.defineProperty(window, "location", {
+        value: originalLocation,
+        configurable: true,
+        writable: true,
+      })
+      window.history.replaceState({}, "", "/")
+    })
+
+    it("navigates to '/' by default when neither query nor prop is set", async () => {
+      render(<SignInForm authClient={makeClient()} passkey />)
+      fireEvent.click(await screen.findByRole("button", { name: /sign in with passkey/i }))
+      await waitFor(() => expect(assignMock).toHaveBeenCalledWith("/"))
+    })
+
+    it("navigates to the callbackUrl prop when no query param is present", async () => {
+      render(<SignInForm authClient={makeClient()} passkey callbackUrl="/dashboard" />)
+      fireEvent.click(await screen.findByRole("button", { name: /sign in with passkey/i }))
+      await waitFor(() => expect(assignMock).toHaveBeenCalledWith("/dashboard"))
+    })
+
+    it("navigates to ?callbackUrl= when present (query wins over prop)", async () => {
+      window.history.replaceState({}, "", "/sign-in?callbackUrl=/studio")
+      render(<SignInForm authClient={makeClient()} passkey callbackUrl="/decoy" />)
+      fireEvent.click(await screen.findByRole("button", { name: /sign in with passkey/i }))
+      await waitFor(() => expect(assignMock).toHaveBeenCalledWith("/studio"))
+    })
+
+    it("does NOT auto-navigate when onSignedIn is provided (consumer owns navigation)", async () => {
+      const onSignedIn = vi.fn()
+      render(<SignInForm authClient={makeClient()} passkey onSignedIn={onSignedIn} callbackUrl="/dashboard" />)
+      fireEvent.click(await screen.findByRole("button", { name: /sign in with passkey/i }))
+      await waitFor(() => expect(onSignedIn).toHaveBeenCalledTimes(1))
+      expect(assignMock).not.toHaveBeenCalled()
+    })
+
+    it("does NOT auto-navigate when passkey sign-in returns an error", async () => {
+      const passkey = vi.fn(async () => ({ error: { message: "no creds" } }))
+      render(<SignInForm authClient={makeClient({ passkey })} passkey />)
+      fireEvent.click(await screen.findByRole("button", { name: /sign in with passkey/i }))
+      await waitFor(() => expect(screen.queryByText(/no creds/i)).not.toBeNull())
+      expect(assignMock).not.toHaveBeenCalled()
+    })
+  })
 })
 
 describe("<SignInForm/> magicLink toggle + divider", () => {
