@@ -95,7 +95,18 @@ export interface SignInFormProps {
   magicLink?: boolean
   /** Divider text between social/passkey buttons and the magic-link form. Default "or". */
   dividerLabel?: ReactNode
-  /** Fires after a successful Google or passkey sign-in attempt. (Magic-link uses onSent.) */
+  /**
+   * Fires after a successful Google or passkey sign-in attempt. (Magic-link uses onSent.)
+   *
+   * Passkey-specific: better-auth's `signIn.passkey()` does not redirect on its own —
+   * it just sets the session cookie and returns. When `onSignedIn` is not provided, the
+   * form falls back to `window.location.assign(callbackURL)` so passkey sign-in actually
+   * lands the user somewhere. Passing `onSignedIn` opts out of that default navigation;
+   * you become responsible for redirecting (e.g. via your router) inside the callback.
+   *
+   * Google is unaffected: better-auth's social flow handles the post-auth redirect itself,
+   * and `onSignedIn` is purely a posthook there.
+   */
   onSignedIn?: () => void
 
   // Magic-link form knobs (unchanged from 0.2.x)
@@ -240,7 +251,19 @@ export function SignInForm(props: SignInFormProps) {
       setMethod("passkey", "error", "Passkey sign-in is not configured on this client.")
       return
     }
-    return runAttempt("passkey", () => passkeyMethod(), () => onSignedIn?.())
+    return runAttempt("passkey", () => passkeyMethod(), () => {
+      if (onSignedIn) {
+        onSignedIn()
+        return
+      }
+      // better-auth's signIn.passkey() doesn't accept a callbackURL and doesn't
+      // redirect — without this fallback the form would sit in the "sent" state
+      // and the user would never leave /sign-in. Use window.location.assign
+      // (not a router push) so middleware and server components re-read the
+      // freshly set session cookie instead of serving router-cached output.
+      const callbackURL = resolveCallbackUrl(callbackParam, callbackUrl)
+      window.location.assign(callbackURL)
+    })
   }
 
   const showGoogle = !!google
