@@ -151,6 +151,27 @@ npx drizzle-kit migrate
 
 That creates the `user`, `session`, `account`, `verification`, and `passkey` tables. Re-run after a package update that changes the schema (release notes will say so).
 
+## Deploy ordering
+
+Any Server Component that reads from Drizzle during static rendering — e.g. a public header/footer/banner backed by a settings table — turns `next build` into a database client. If migrations haven't run on the target environment yet, the build crashes with `relation "…" does not exist`. The trace points at `.next/server/chunks/ssr/…` rather than at your layout, so the error reads as opaque.
+
+Mirror the `prestart` migrate hook with a `prebuild` hook in your consumer's `package.json`:
+
+```json
+{
+  "scripts": {
+    "prebuild": "drizzle-kit migrate",
+    "build": "next build",
+    "prestart": "drizzle-kit migrate",
+    "start": "next start"
+  }
+}
+```
+
+`drizzle-kit migrate` is idempotent, so steady-state deploys take a no-op hit. The build container needs `DATABASE_URL` set — most platforms (Nixpacks/Railway/Coolify/Vercel) inject build-time env automatically.
+
+If nothing on a static route touches the DB (auth-gated dashboards render per request, so they don't trip the build), `prestart` alone is enough. The moment you add anything DB-backed to a public layout, switch to the two-hook setup.
+
 ## Enabling Google sign-in
 
 ```ts
