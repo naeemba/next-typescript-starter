@@ -23,7 +23,7 @@ export const AUTH_MIGRATIONS_TABLE = "__next_starter_migrations"
  * loader, which works around Turbopack-virtualized URLs).
  */
 export function resolveMigrationsFolder(): string {
-  const folder = fileURLToPath(new URL("../../migrations", import.meta.url))
+  const folder = fileURLToPath(new URL("../migrations", import.meta.url))
   if (!existsSync(folder)) {
     throw new Error(
       `[@naeemba/next-starter] Could not locate the bundled migrations folder.\n` +

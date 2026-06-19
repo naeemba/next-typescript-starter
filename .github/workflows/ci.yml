@@ -48,13 +48,16 @@ jobs:
       - name: Test (package)
         run: npm test
 
+      - name: Check migrations are in sync with schema
+        run: npm run db:check:auth
+
       - name: Build (package)
         run: npm run build
 
       - name: Typecheck (example)
         run: npm --workspace examples/basic run typecheck
 
-      - name: Apply migrations
+      - name: Apply auth migrations (package-owned track)
         run: npm --workspace examples/basic run db:migrate
 
       - name: Install Playwright browser

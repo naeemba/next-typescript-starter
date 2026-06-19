@@ -8,8 +8,7 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate",
+    "db:migrate": "next-starter migrate",
     "test:e2e": "playwright test"
   },
   "dependencies": {
@@ -26,7 +25,6 @@
     "@playwright/test": "^1.60.0",
     "@types/node": "^22.0.0",
     "@types/react": "^19.2.0",
-    "drizzle-kit": "^0.31.10",
-    "typescript": "^6.0.3"
+"typescript": "^6.0.3"
   }
 }
