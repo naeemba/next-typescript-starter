@@ -9,22 +9,31 @@ import { loadOptionalPeerAsync } from "../../internal/optional-peer.js"
  */
 export async function renderDefaultMagicLink(args: { url: string; appName?: string }): Promise<string> {
   // Probe each peer via its bare specifier so the loader's instructional
-  // error fires only when *that* peer is genuinely missing. `render` is
-  // used directly in this file, so keep the loader's return value. The
-  // `@react-email/components` probe stays probe-only because the actual
-  // consumer is `./magic-link.js` — loading that file through the loader
-  // would rewrite any MODULE_NOT_FOUND inside it (e.g. tsup output drift)
-  // into a misleading "@react-email/components is not installed" message.
+  // error fires only when *that* peer is genuinely missing. Both modules are
+  // used directly here: `render` renders the element, and the components module
+  // is injected into MagicLinkEmail so `./magic-link.js` carries no static
+  // `@react-email/components` import — that would make it a hard build
+  // dependency once a consumer's bundler follows the import below.
   const { render } = await loadOptionalPeerAsync(
     "@react-email/render",
-    () => import("@react-email/render"),
+    () =>
+      import(
+        /* webpackIgnore: true */ /* turbopackIgnore: true */ "@react-email/render"
+      ),
     "the default magic-link email template",
   )
-  await loadOptionalPeerAsync(
+  const components = await loadOptionalPeerAsync(
     "@react-email/components",
-    () => import("@react-email/components"),
+    () =>
+      import(
+        /* webpackIgnore: true */ /* turbopackIgnore: true */ "@react-email/components"
+      ),
     "the default magic-link email template",
   )
+  // `./magic-link.js` is loaded with a plain import (no ignore comment): it has
+  // no optional-peer import of its own, so bundling it is safe, and keeping it
+  // bundled means a genuine error inside it surfaces as itself rather than a
+  // misleading "components not installed" message.
   const { MagicLinkEmail } = await import("./magic-link.js")
-  return render(MagicLinkEmail({ url: args.url, appName: args.appName }))
+  return render(MagicLinkEmail(components, { url: args.url, appName: args.appName }))
 }

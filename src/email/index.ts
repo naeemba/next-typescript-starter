@@ -48,7 +48,10 @@ export async function sendEmail(args: EmailArgs): Promise<void> {
   if (!html && args.react) {
     const { render } = await loadOptionalPeerAsync(
       "@react-email/render",
-      () => import("@react-email/render"),
+      () =>
+        import(
+          /* webpackIgnore: true */ /* turbopackIgnore: true */ "@react-email/render"
+        ),
       "the sendEmail React-template path",
     )
     html = await render(args.react)
