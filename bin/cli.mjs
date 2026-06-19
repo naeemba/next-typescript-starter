@@ -501,6 +501,10 @@ See https://github.com/naeemba/next-typescript-starter#readme for the full docs.
 }
 
 run().catch((err) => {
-  stdout.write(`next-starter init failed: ${err.message}\n`)
+  // Key the label off the subcommand so a failing `migrate` (DB refused, a
+  // SQL error mid-migration, a missing dist/db/index.js) does not surface as
+  // "init failed" — that mislabels the deploy-time prestart/prebuild path.
+  const subcommand = argv[2] && !argv[2].startsWith("-") ? argv[2] : "init"
+  stdout.write(`next-starter ${subcommand} failed: ${err.message}\n`)
   exit(1)
 })
