@@ -20,7 +20,7 @@ Each method is opt-in. Enabling one does not require the others.
 npm install @naeemba/next-starter
 ```
 
-Then scaffold the seven shim files automatically:
+Then scaffold the required shim files automatically:
 
 ```bash
 npx @naeemba/next-starter init
@@ -116,31 +116,11 @@ export default function Page() {
 
 Renders a heading + user-friendly message based on the `?error=<code>` query the magic-link verify endpoint redirects to on failure (expired token, used token, etc).
 
-### db/schema.ts
+### Auth tables (no db/schema.ts or drizzle.config.ts needed for auth)
 
-```ts
-export * from "@naeemba/next-starter/schema"
-```
+Auth tables are package-owned — apply them with `npx next-starter migrate` (see [First-time setup](#first-time-setup) below). `init` no longer scaffolds `db/schema.ts` or `drizzle.config.ts` for auth.
 
-### drizzle.config.ts
-
-```ts
-import { loadEnvConfig } from "@next/env"
-import { defineConfig } from "drizzle-kit"
-
-loadEnvConfig(process.cwd())
-
-export default defineConfig({
-  schema: "./db/schema.ts",
-  out: "./drizzle",
-  dialect: "postgresql",
-  dbCredentials: { url: process.env.DATABASE_URL! },
-})
-```
-
-Why `loadEnvConfig`? drizzle-kit runs as a CLI outside Next.js, so it doesn't auto-read `.env.local` / `.env`. `@next/env` ships with `next` (already a peer dep) and applies Next's env file precedence so `pnpm db:push` works locally with no extra install.
-
-Why a `db/schema.ts` shim? drizzle-kit does not follow symlinks and requires a `.ts` schema source — so the cleanest pattern is a one-line re-export that drizzle-kit can read directly. You can add app tables to `db/schema.ts` alongside the re-export; the CLI's merge behavior preserves them on re-init.
+When you add your own tables, set up `drizzle.config.ts` and a schema file for them yourself. For an FK to the auth user, import it from the package: `import { user } from "@naeemba/next-starter/schema"`.
 
 ## First-time setup
 

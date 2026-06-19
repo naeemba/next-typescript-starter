@@ -46,7 +46,7 @@ Then stop managing the auth tables with your own drizzle-kit: delete the
 `@naeemba/next-starter/schema` re-export from `db/schema.ts` (and the file
 entirely if it held nothing else), drop the auth tables from your
 `drizzle.config.ts` scope, and delete any previously-generated auth migration
-files from your `drizzle/` folder. If your `drizzle.config.ts` only ever served
+files from your `drizzle/` folder (or wherever `out:` points in your `drizzle.config.ts`). If your `drizzle.config.ts` only ever served
 the auth tables, remove it.
 
 ### Cross-track foreign keys
