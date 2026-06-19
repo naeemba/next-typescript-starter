@@ -75,6 +75,13 @@ export async function migrateAuth(db: Db, opts: MigrateAuthOptions = {}): Promis
  * Mirrors the drizzle postgres-js migrator's own bookkeeping: schema
  * `drizzle`, table `__next_starter_migrations(id serial pk, hash text,
  * created_at bigint)`, one row per migration with created_at = folderMillis.
+ *
+ * Guards against the silent-footgun case: baselining a database where the
+ * auth tables do not actually exist (fresh DB, wrong DATABASE_URL, partial
+ * restore) would otherwise record the migrations as applied and make the
+ * follow-up `migrateAuth` a no-op, surfacing later as an opaque
+ * `relation "user" does not exist` at request time. We probe one canonical
+ * table first and refuse with an actionable error if it's absent.
  */
 export async function baselineAuth(
   db: Db,
@@ -82,6 +89,26 @@ export async function baselineAuth(
 ): Promise<{ inserted: number; skipped: number }> {
   const migrationsFolder = opts.migrationsFolder ?? resolveMigrationsFolder()
   const migrations = readMigrationFiles({ migrationsFolder })
+
+  // Refuse to baseline a database that has not actually been provisioned with
+  // the auth tables — recording the journal rows here would silently mask a
+  // missing schema. `to_regclass` returns NULL when the table does not exist.
+  const probe = await db.execute(
+    sql`SELECT to_regclass('public.user') AS table_oid`,
+  )
+  const probeRows = probe as unknown as Array<{ table_oid: string | null }>
+  if (!probeRows[0]?.table_oid) {
+    throw new Error(
+      `[@naeemba/next-starter] Refusing to baseline: the canonical auth table ` +
+        `"public.user" does not exist in this database.\n` +
+        `  baseline only records the shipped migrations as already-applied; it ` +
+        `does NOT create tables.\n` +
+        `  If this is a fresh or empty database, run plain \`migrate\` instead to ` +
+        `create the schema.\n` +
+        `  Otherwise check that DATABASE_URL points at the database whose auth ` +
+        `tables were created by the pre-0.8.0 drizzle-kit path.`,
+    )
+  }
 
   await db.execute(sql`CREATE SCHEMA IF NOT EXISTS "drizzle"`)
   await db.execute(

@@ -49,4 +49,15 @@ d("baselineAuth (integration)", () => {
   it("leaves migrateAuth as a clean no-op afterward", async () => {
     await expect(migrateAuth(db)).resolves.toBeUndefined()
   })
+
+  it("refuses to baseline when the canonical auth table is absent", async () => {
+    // Mimic a fresh/empty DB or a wrong DATABASE_URL: no auth tables, no journal.
+    await db.execute(sql`DROP SCHEMA IF EXISTS drizzle CASCADE`)
+    await db.execute(sql.raw(
+      `DROP TABLE IF EXISTS "passkey","verification","account","session","user" CASCADE`,
+    ))
+    await expect(baselineAuth(db)).rejects.toThrow(/public\.user.*does not exist/s)
+    // Recreate tables so the suite leaves the DB in a sane state.
+    await migrateAuth(db)
+  })
 })
