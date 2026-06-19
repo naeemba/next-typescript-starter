@@ -26,8 +26,6 @@ describe("next-starter init", () => {
     expect(existsSync(join(dir, "lib/auth.ts"))).toBe(true)
     expect(existsSync(join(dir, "lib/auth-client.ts"))).toBe(true)
     expect(existsSync(join(dir, "lib/auth-server.ts"))).toBe(true)
-    expect(existsSync(join(dir, "db/schema.ts"))).toBe(true)
-    expect(existsSync(join(dir, "drizzle.config.ts"))).toBe(true)
     expect(existsSync(join(dir, "app/api/auth/[...all]/route.ts"))).toBe(true)
     expect(existsSync(join(dir, "app/sign-in/page.tsx"))).toBe(true)
     expect(existsSync(join(dir, ".env.example"))).toBe(true)
@@ -91,19 +89,6 @@ describe("next-starter init", () => {
     expect(contents).not.toMatch(/passkey:/)
   })
 
-  // The `--no-passkey` flag must propagate to every template that names
-  // the passkey peer — not just lib/auth.ts. Each missed template
-  // re-introduces the dependency: db/schema.ts re-exporting `passkey`
-  // creates a migration for a table the user opted out of, and
-  // lib/auth-client.ts importing `passkeyClient` from
-  // `@better-auth/passkey/client` keeps that peer in the consumer's bundle.
-  it("--no-passkey drops `passkey` from db/schema.ts re-exports", () => {
-    runCli(["init", dir, "--no-passkey"])
-    const schema = readFileSync(join(dir, "db/schema.ts"), "utf8")
-    expect(schema).not.toMatch(/\bpasskey\b/)
-    expect(schema).toMatch(/user, session, account, verification/)
-  })
-
   it("--no-passkey omits the @better-auth/passkey/client import in lib/auth-client.ts", () => {
     runCli(["init", dir, "--no-passkey"])
     const client = readFileSync(join(dir, "lib/auth-client.ts"), "utf8")
@@ -111,10 +96,8 @@ describe("next-starter init", () => {
     expect(client).not.toMatch(/passkeyClient/)
   })
 
-  it("default init emits the passkey re-export and passkeyClient factory injection", () => {
+  it("default init emits the passkeyClient factory injection", () => {
     runCli(["init", dir])
-    const schema = readFileSync(join(dir, "db/schema.ts"), "utf8")
-    expect(schema).toMatch(/\bpasskey\b/)
     const client = readFileSync(join(dir, "lib/auth-client.ts"), "utf8")
     expect(client).toMatch(/import \{ passkeyClient \} from "@better-auth\/passkey\/client"/)
     expect(client).toMatch(/passkey:\s*passkeyClient/)
@@ -154,29 +137,6 @@ describe("next-starter init", () => {
     runCli(["init", dir, "--src"])
     expect(existsSync(join(dir, "src/lib/auth.ts"))).toBe(true)
     expect(existsSync(join(dir, "lib/auth.ts"))).toBe(false)
-  })
-
-  // Regression: `drizzleConfig` used to be a static string with
-  // `schema: "./db/schema.ts"`, but under `--src` the CLI writes the
-  // schema at `src/db/schema.ts`. The mismatch made the very next step
-  // (`npm run db:generate` / `db:migrate`) fail with
-  // "Could not find schema file at './db/schema.ts'". The drizzle config's
-  // schema path MUST track the same prefix used for db/schema.ts.
-  it("--src writes drizzle.config.ts pointing at src/db/schema.ts", () => {
-    runCli(["init", dir, "--src"])
-    const cfg = readFileSync(join(dir, "drizzle.config.ts"), "utf8")
-    expect(cfg).toMatch(/schema:\s*"\.\/src\/db\/schema\.ts"/)
-    expect(cfg).not.toMatch(/schema:\s*"\.\/db\/schema\.ts"/)
-    // Sanity: the path it points at is the file the same run wrote.
-    expect(existsSync(join(dir, "src/db/schema.ts"))).toBe(true)
-  })
-
-  it("--no-src writes drizzle.config.ts pointing at db/schema.ts", () => {
-    runCli(["init", dir, "--no-src"])
-    const cfg = readFileSync(join(dir, "drizzle.config.ts"), "utf8")
-    expect(cfg).toMatch(/schema:\s*"\.\/db\/schema\.ts"/)
-    expect(cfg).not.toMatch(/schema:\s*"\.\/src\/db\/schema\.ts"/)
-    expect(existsSync(join(dir, "db/schema.ts"))).toBe(true)
   })
 
   it("auto-detects src/ layout when src/app/ pre-exists", () => {
@@ -354,155 +314,18 @@ describe("next-starter init", () => {
     expect(stdout).not.toMatch(/@better-auth\/passkey/)
   })
 
-  // 0.5.0 — consumer-owned file safety.
-  //
-  // Regression: under 0.4.0, `init --force` overwrote db/schema.ts wholesale,
-  // destroying any consumer-defined tables (blog_posts, inquiries, ...). The
-  // re-export line is the only thing the CLI owns in that file; the rest is
-  // the consumer's surface. New behavior: classify db/schema.ts as
-  // "schema-merge" — if the re-export is missing, PREPEND it; otherwise
-  // leave the file alone. --force does NOT replace this file.
-  describe("db/schema.ts is consumer-owned (merge, not overwrite)", () => {
-    it("prepends the re-export line when the consumer's schema is missing it", () => {
-      const existing =
-        `import { pgTable, serial, text } from "drizzle-orm/pg-core"\n\n` +
-        `export const blogPosts = pgTable("blog_posts", {\n` +
-        `  id: serial("id").primaryKey(),\n` +
-        `  title: text("title").notNull(),\n` +
-        `})\n`
-      mkdirSync(join(dir, "db"), { recursive: true })
-      writeFileSync(join(dir, "db/schema.ts"), existing)
-      const { code, stdout } = runCli(["init", dir, "--no-src"])
-      expect(code).toBe(0)
-      const merged = readFileSync(join(dir, "db/schema.ts"), "utf8")
-      // The re-export line is now present
-      expect(merged).toMatch(/@naeemba\/next-starter\/schema/)
-      expect(merged).toMatch(/user, session, account, verification/)
-      // The consumer's table is still there
-      expect(merged).toMatch(/export const blogPosts = pgTable/)
-      expect(merged).toMatch(/blog_posts/)
-      // And the output flagged the merge, not a destructive overwrite
-      expect(stdout).toMatch(/db\/schema\.ts.*merged/)
-      expect(stdout).not.toMatch(/db\/schema\.ts.*overwritten/)
-    })
-
-    it("leaves an idempotent re-run alone when the re-export is already present", () => {
-      const existing =
-        `export { user, session, account, verification, passkey } from "@naeemba/next-starter/schema"\n\n` +
-        `import { pgTable, serial, text } from "drizzle-orm/pg-core"\n` +
-        `export const blogPosts = pgTable("blog_posts", {\n` +
-        `  id: serial("id").primaryKey(),\n` +
-        `  title: text("title").notNull(),\n` +
-        `})\n`
-      mkdirSync(join(dir, "db"), { recursive: true })
-      writeFileSync(join(dir, "db/schema.ts"), existing)
-      const before = readFileSync(join(dir, "db/schema.ts"), "utf8")
-      runCli(["init", dir, "--no-src"])
-      const after = readFileSync(join(dir, "db/schema.ts"), "utf8")
-      expect(after).toBe(before)
-    })
-
-    // The critical safety property: --force is for starter-owned shims only.
-    // db/schema.ts is consumer-owned regardless of the flag — destroying
-    // table definitions to "force-refresh" a one-line re-export is never
-    // the right call.
-    it("does NOT overwrite the consumer's schema even with --force", () => {
-      const existing =
-        `import { pgTable, serial, text } from "drizzle-orm/pg-core"\n` +
-        `export const blogPosts = pgTable("blog_posts", { id: serial("id").primaryKey() })\n`
-      mkdirSync(join(dir, "db"), { recursive: true })
-      writeFileSync(join(dir, "db/schema.ts"), existing)
-      runCli(["init", dir, "--no-src", "--force"])
-      const after = readFileSync(join(dir, "db/schema.ts"), "utf8")
-      expect(after).toMatch(/export const blogPosts = pgTable/)
-      expect(after).toMatch(/@naeemba\/next-starter\/schema/)
-    })
-
-    // When no existing schema file, scaffold the one-line shim. This is
-    // the path the docs show consumers without a db/schema.ts file yet.
-    it("scaffolds the one-line shim when no db/schema.ts exists", () => {
-      runCli(["init", dir, "--no-src"])
-      const schema = readFileSync(join(dir, "db/schema.ts"), "utf8")
-      expect(schema).toMatch(/export \{[^}]*\} from "@naeemba\/next-starter\/schema"/)
-    })
-
-    // Schema-merge drift: if the consumer ran `init --no-passkey` first
-    // (re-export omits `passkey`) and later re-runs without that flag
-    // (default `--passkey`), `lib/auth.ts` carries the passkey block
-    // but db/schema.ts would otherwise still be missing the `passkey`
-    // re-export — drizzle-kit fails with "Could not find table". The CLI
-    // must rewrite the re-export line in place when symbol sets diverge.
-    it("rewrites the re-export line when symbol set diverges (no-passkey -> passkey)", () => {
-      const existing =
-        `export { user, session, account, verification } from "@naeemba/next-starter/schema"\n\n` +
-        `import { pgTable, serial, text } from "drizzle-orm/pg-core"\n` +
-        `export const blogPosts = pgTable("blog_posts", {\n` +
-        `  id: serial("id").primaryKey(),\n` +
-        `  title: text("title").notNull(),\n` +
-        `})\n`
-      mkdirSync(join(dir, "db"), { recursive: true })
-      writeFileSync(join(dir, "db/schema.ts"), existing)
-      const { code, stdout } = runCli(["init", dir, "--no-src"])
-      expect(code).toBe(0)
-      const merged = readFileSync(join(dir, "db/schema.ts"), "utf8")
-      // The re-export now carries `passkey` (default --passkey)
-      expect(merged).toMatch(/user, session, account, verification, passkey/)
-      // The consumer's table is still there
-      expect(merged).toMatch(/export const blogPosts = pgTable/)
-      // Output flagged the merge with the symbol-set-changed note
-      expect(stdout).toMatch(/db\/schema\.ts.*merged/)
-      expect(stdout).toMatch(/symbol set changed/)
-    })
-
-    // Inverse drift: previously --passkey, now --no-passkey. Less harmful
-    // (extra re-export is benign at runtime) but keeping schema in sync
-    // with the generated lib/auth.ts avoids reader confusion and stops
-    // drizzle-kit from migrating a passkey table for a consumer that
-    // opted out.
-    it("rewrites the re-export line when symbol set diverges (passkey -> no-passkey)", () => {
-      const existing =
-        `export { user, session, account, verification, passkey } from "@naeemba/next-starter/schema"\n`
-      mkdirSync(join(dir, "db"), { recursive: true })
-      writeFileSync(join(dir, "db/schema.ts"), existing)
-      runCli(["init", dir, "--no-src", "--no-passkey"])
-      const merged = readFileSync(join(dir, "db/schema.ts"), "utf8")
-      expect(merged).toMatch(/user, session, account, verification/)
-      expect(merged).not.toMatch(/passkey/)
-    })
+  // 0.8.0 — init no longer scaffolds auth drizzle wiring; package owns
+  // migrations. init prints `next-starter migrate` guidance instead.
+  it("tells the user to run next-starter migrate, not drizzle-kit, for auth", () => {
+    const { stdout } = runCli(["init", dir])
+    expect(stdout).toContain("next-starter migrate")
+    expect(stdout).not.toContain("drizzle migrations against the better-auth schema")
   })
 
-  // 0.5.0 — drizzle.config.ts is consumer-owned (e.g. verbose, casing,
-  // schemaFilter customizations). Never overwrite, even with --force.
-  describe("drizzle.config.ts is consumer-owned (preserved)", () => {
-    it("preserves an existing drizzle.config.ts even with --force", () => {
-      const custom =
-        `import { defineConfig } from "drizzle-kit"\n` +
-        `export default defineConfig({\n` +
-        `  schema: "./db/schema.ts",\n` +
-        `  out: "./drizzle",\n` +
-        `  dialect: "postgresql",\n` +
-        `  verbose: true,\n` +
-        `  strict: true,\n` +
-        `  dbCredentials: { url: process.env.DATABASE_URL! },\n` +
-        `})\n`
-      writeFileSync(join(dir, "drizzle.config.ts"), custom)
-      const { stdout } = runCli(["init", dir, "--no-src", "--force"])
-      const after = readFileSync(join(dir, "drizzle.config.ts"), "utf8")
-      expect(after).toBe(custom)
-      expect(stdout).toMatch(/drizzle\.config\.ts.*consumer-owned/)
-    })
-
-    // When no drizzle.config.ts exists, scaffold the env-loading template.
-    // The template must load env files so `pnpm db:push` works locally
-    // without a separate manual dotenv install.
-    it("scaffolds drizzle.config.ts with @next/env loading when none exists", () => {
-      runCli(["init", dir, "--no-src"])
-      const cfg = readFileSync(join(dir, "drizzle.config.ts"), "utf8")
-      expect(cfg).toMatch(/loadEnvConfig/)
-      expect(cfg).toMatch(/from "@next\/env"/)
-      // Non-null assertion satisfies TS — process.env.DATABASE_URL is string | undefined
-      expect(cfg).toMatch(/process\.env\.DATABASE_URL!/)
-    })
+  it("does not scaffold db/schema.ts or drizzle.config.ts", () => {
+    runCli(["init", dir])
+    expect(existsSync(join(dir, "db/schema.ts"))).toBe(false)
+    expect(existsSync(join(dir, "drizzle.config.ts"))).toBe(false)
   })
 
   // 0.5.0 — when the consumer already has a `db/index.ts` exporting `db`,

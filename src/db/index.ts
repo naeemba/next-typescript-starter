@@ -114,3 +114,6 @@ export const db = new Proxy({} as Db, {
     return Reflect.get(getDb(), prop, receiver)
   },
 })
+
+export { migrateAuth, baselineAuth, resolveMigrationsFolder, AUTH_MIGRATIONS_TABLE } from "./migrate.js"
+export type { MigrateAuthOptions } from "./migrate.js"

@@ -36,41 +36,6 @@ import { auth } from "./auth"
 export const { getSession, requireSession } = createServer(auth)
 `
 
-// The schema re-export consumers need from @naeemba/next-starter/schema.
-// Exposed as a separate constant so the merge path in bin/cli.mjs can
-// detect "this re-export is already present" via substring match before
-// touching the consumer's existing db/schema.ts (which may carry their
-// app tables).
-export const dbSchemaReExport = ({ passkey }) =>
-  `export { user, session, account, verification${passkey ? ", passkey" : ""} } from "@naeemba/next-starter/schema"
-`
-
-// `schema` must track the prefix the CLI uses to write db/schema.ts.
-// With `--src` (or auto-detected src layout) the schema lives at
-// `src/db/schema.ts`, otherwise `db/schema.ts`. A hardcoded
-// `./db/schema.ts` would make `npm run db:generate` fail in src layouts
-// with "Could not find schema file" — exactly the paper-cut the CLI is
-// meant to eliminate.
-//
-// `loadEnvConfig` from `@next/env` reads .env / .env.local / .env.<NODE_ENV>
-// with Next's precedence so `pnpm db:push` works locally without an extra
-// dotenv install. `@next/env` ships with `next` (already a peer dep), so
-// no new install is required.
-export const drizzleConfig = ({ src }) => `import { loadEnvConfig } from "@next/env"
-import { defineConfig } from "drizzle-kit"
-
-loadEnvConfig(process.cwd())
-
-export default defineConfig({
-  schema: "${src ? "./src/db/schema.ts" : "./db/schema.ts"}",
-  out: "./drizzle",
-  dialect: "postgresql",
-  dbCredentials: {
-    url: process.env.DATABASE_URL!,
-  },
-})
-`
-
 export const authRoute = `import { createAuthRoute } from "@naeemba/next-starter/auth-route"
 import { auth } from "@/lib/auth"
 

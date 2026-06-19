@@ -3,10 +3,47 @@ import { mkdir, readFile, writeFile, access } from "node:fs/promises"
 import { dirname, join, resolve, relative } from "node:path"
 import { argv, cwd, exit, stdout } from "node:process"
 import {
-  libAuth, libAuthClient, libAuthServer, dbSchemaReExport,
-  drizzleConfig, authRoute, signInPage, envExample, proxyTemplate,
+  libAuth, libAuthClient, libAuthServer,
+  authRoute, signInPage, envExample, proxyTemplate,
   passkeyManagerPage, signInErrorPage,
 } from "./templates.mjs"
+
+// `next-starter migrate` / `next-starter migrate baseline`
+// Applies the package-owned auth migration track. Loaded from the built
+// dist entry so the bin and the library share one implementation.
+async function runMigrate(rest) {
+  if (rest[0] !== undefined && rest[0] !== "baseline") {
+    stdout.write(
+      `[@naeemba/next-starter] Unknown migrate subcommand: "${rest[0]}". Valid forms: migrate / migrate baseline\n`,
+    )
+    exit(1)
+  }
+  const baseline = rest[0] === "baseline"
+  const url = process.env.DATABASE_URL
+  if (!url || !url.trim()) {
+    stdout.write(
+      "[@naeemba/next-starter] DATABASE_URL is required to run migrations but is not set.\n",
+    )
+    exit(1)
+  }
+  // postgres is an optional peer; import lazily so `init` works without it.
+  const { default: postgres } = await import("postgres")
+  const { drizzle } = await import("drizzle-orm/postgres-js")
+  const { migrateAuth, baselineAuth } = await import("../dist/db/index.js")
+  const client = postgres(url, { max: 1 })
+  try {
+    const db = drizzle(client)
+    if (baseline) {
+      const { inserted, skipped } = await baselineAuth(db)
+      stdout.write(`  baseline: recorded ${inserted} migration(s), ${skipped} already present\n`)
+    } else {
+      await migrateAuth(db)
+      stdout.write(`  auth migrations applied\n`)
+    }
+  } finally {
+    await client.end({ timeout: 5 })
+  }
+}
 
 function parseArgs(input) {
   const flags = {
@@ -50,11 +87,16 @@ function helpText() {
   Scaffold the seven shim files that wire @naeemba/next-starter into a
   Next.js app.
 
+  next-starter migrate [baseline]
+
+  Apply the package-owned auth migrations (user/session/account/verification/
+  passkey) against DATABASE_URL, recorded in __next_starter_migrations.
+  Use \`migrate baseline\` ONCE on a pre-0.8.0 app to adopt already-created
+  auth tables without re-running their DDL.
+
   Options:
     --force          overwrite starter-owned files that already exist
-                     (consumer-owned files — db/schema.ts, drizzle.config.ts
-                     — are never overwritten; db/schema.ts gets the
-                     re-export prepended if missing)
+                     (proxy.ts is consumer-owned and never overwritten)
     --src            force writes under src/ (auto-detected by default)
     --no-src         force writes at project root
     --no-google      omit the google block from lib/auth.ts
@@ -268,87 +310,13 @@ async function removeObsoleteScripts(target, obsolete) {
   await writeFile(pkgPath, JSON.stringify(pkg, null, 2) + trailingNewline, "utf8")
 }
 
-// Parse the comma-separated symbol list inside an `export { ... }` clause
-// into a normalized set of local names (the part after `as` if present).
-// Whitespace and stray commas are tolerated.
-function parseSymbolList(raw) {
-  const out = new Set()
-  for (const part of raw.split(",")) {
-    const trimmed = part.trim()
-    if (!trimmed) continue
-    // Strip leading `type ` modifier and resolve `X as Y` to `Y`.
-    const noType = trimmed.replace(/^type\s+/, "")
-    const asMatch = noType.match(/^\S+\s+as\s+(\S+)$/)
-    out.add(asMatch ? asMatch[1] : noType)
-  }
-  return out
-}
-
-function sameSymbolSet(a, b) {
-  if (a.size !== b.size) return false
-  for (const v of a) if (!b.has(v)) return false
-  return true
-}
-
 // File classification for write strategy:
 // - "starter":       starter owns this. Skip if exists; overwrite with --force.
-// - "schema-merge":  consumer-owned with a required re-export from
-//                    @naeemba/next-starter/schema. If file exists and the
-//                    re-export is already present AND its symbol set matches
-//                    what the CLI wants to emit, leave it alone. If the
-//                    symbol set diverges (e.g. consumer first ran with
-//                    --no-passkey then re-ran with default --passkey),
-//                    rewrite the re-export line in place — consumer tables
-//                    untouched. If the re-export is missing entirely,
-//                    prepend the line. If the file doesn't exist, scaffold
-//                    the one-line shim.
-//                    --force does NOT replace this file. Destroying the
-//                    consumer's table definitions was the v0.4 footgun
-//                    this classification exists to close.
 // - "consumer-skip": consumer-owned. Never overwrite, even with --force.
-//                    drizzle.config.ts often carries verbosity/casing/
-//                    schemaFilter customizations the CLI can't reproduce.
+//                    proxy.ts often carries verbosity/casing/routing
+//                    customizations the CLI can't reproduce.
 async function writeFileSafe(kind, path, content, force, status) {
   await mkdir(dirname(path), { recursive: true })
-
-  if (kind === "schema-merge") {
-    if (await exists(path)) {
-      const existing = await readFile(path, "utf8")
-      // Detect a pre-existing re-export from @naeemba/next-starter/schema
-      // and compare its symbol set against the one the CLI wants to emit.
-      // A substring-only check leaves the consumer with a stale set when
-      // they flip `--passkey` between runs: `lib/auth.ts` would carry the
-      // passkey block while `db/schema.ts` is missing the `passkey`
-      // re-export, and drizzle-kit fails with "Could not find table".
-      const reExportRegex = /^[ \t]*export\s*\{([^}]+)\}\s*from\s*["']@naeemba\/next-starter\/schema["'][ \t]*;?[ \t]*\r?\n?/m
-      const existingMatch = existing.match(reExportRegex)
-      if (existingMatch) {
-        const existingSymbols = parseSymbolList(existingMatch[1])
-        const expectedSymbols = parseSymbolList(content.match(reExportRegex)?.[1] ?? "")
-        if (sameSymbolSet(existingSymbols, expectedSymbols)) {
-          status.skipped.push({ path, note: "re-export already present" })
-          return
-        }
-        // Symbol set diverges — replace just the re-export line, keep the
-        // rest of the consumer's file intact.
-        const reExportLine = content.match(reExportRegex)?.[0] ?? content
-        const merged = existing.replace(reExportRegex, reExportLine)
-        await writeFile(path, merged, "utf8")
-        status.merged.push({ path, note: "rewrote re-export line (symbol set changed)" })
-        return
-      }
-      const reExport = content
-      const sep = existing.startsWith("\n") ? "" : "\n"
-      const merged = `${reExport}${sep}${existing}`
-      await writeFile(path, merged, "utf8")
-      status.merged.push({ path, note: undefined })
-      return
-    }
-    // No existing file — scaffold the one-line shim.
-    await writeFile(path, content, "utf8")
-    status.created.push(path)
-    return
-  }
 
   if (kind === "consumer-skip") {
     if (await exists(path)) {
@@ -383,6 +351,10 @@ async function run() {
     stdout.write(helpText())
     return
   }
+  if (subcommand === "migrate") {
+    await runMigrate(argv.slice(3))
+    return
+  }
   if (subcommand !== "init") {
     stdout.write(`Unknown subcommand: ${subcommand}\n\n`)
     stdout.write(helpText())
@@ -405,7 +377,6 @@ async function run() {
     created: [],
     overwritten: [],
     skipped: [],     // entries: { path, note? }
-    merged: [],     // entries: { path, note? }
     preserved: [],
   }
 
@@ -439,8 +410,6 @@ async function run() {
     ["starter",       join(target, `${prefix}lib/auth.ts`),                       libAuth({ google: args.google, passkey: args.passkey, db: useExistingDb })],
     ["starter",       join(target, `${prefix}lib/auth-client.ts`),                libAuthClient({ passkey: args.passkey })],
     ["starter",       join(target, `${prefix}lib/auth-server.ts`),                libAuthServer],
-    ["schema-merge",  join(target, `${prefix}db/schema.ts`),                      dbSchemaReExport({ passkey: args.passkey })],
-    ["consumer-skip", join(target, `drizzle.config.ts`),                          drizzleConfig({ src: useSrc })],
     ["starter",       join(target, `${prefix}app/api/auth/[...all]/route.ts`),    authRoute],
     ["starter",       join(target, `${prefix}app/sign-in/page.tsx`),              signInPage({ google: args.google, passkey: args.passkey })],
     ["starter",       join(target, `${prefix}app/sign-in/error/page.tsx`),        signInErrorPage],
@@ -460,10 +429,6 @@ async function run() {
   const rel = (p) => relative(target, p) || "."
   for (const p of status.created)     stdout.write(`  + ${rel(p)}\n`)
   for (const p of status.overwritten) stdout.write(`  ! ${rel(p)}  (overwritten)\n`)
-  for (const entry of status.merged) {
-    const note = entry.note ?? "prepended @naeemba/next-starter/schema re-export"
-    stdout.write(`  ~ ${rel(entry.path)}  (merged: ${note})\n`)
-  }
   for (const p of status.preserved)   stdout.write(`  = ${rel(p)}  (exists, consumer-owned — not overwritten)\n`)
   for (const entry of status.skipped) {
     const note = entry.note ? ` (${entry.note})` : "  (exists, use --force to overwrite)"
@@ -521,7 +486,14 @@ Next steps:
        npm install resend                                           # production email transport
 ${passkeyHint}     (All optional — install just what your config touches.)
   2. Fill in .env.example -> .env (DATABASE_URL, BETTER_AUTH_SECRET, BETTER_AUTH_URL)
-  3. Run your drizzle migrations against the better-auth schema
+  3. Apply the package-owned auth schema:
+       npx next-starter migrate
+     Add it to your deploy hooks so it runs before start (and before build if a
+     static route reads the DB):
+       "prestart": "next-starter migrate",
+       "prebuild": "next-starter migrate"
+     When you add your OWN tables later, create a drizzle.config.ts for them and
+     chain your migrate after the auth one: "next-starter migrate && drizzle-kit migrate".
   4. npm run dev — visit /sign-in
 
 See https://github.com/naeemba/next-typescript-starter#readme for the full docs.
@@ -529,6 +501,10 @@ See https://github.com/naeemba/next-typescript-starter#readme for the full docs.
 }
 
 run().catch((err) => {
-  stdout.write(`next-starter init failed: ${err.message}\n`)
+  // Key the label off the subcommand so a failing `migrate` (DB refused, a
+  // SQL error mid-migration, a missing dist/db/index.js) does not surface as
+  // "init failed" — that mislabels the deploy-time prestart/prebuild path.
+  const subcommand = argv[2] && !argv[2].startsWith("-") ? argv[2] : "init"
+  stdout.write(`next-starter ${subcommand} failed: ${err.message}\n`)
   exit(1)
 })

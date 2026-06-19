@@ -1,5 +1,61 @@
 # Upgrading
 
+## 0.7.x → 0.8.0
+
+**BREAKING — auth tables are now migrated by the package, not your drizzle-kit.**
+
+Before 0.8.0 you ran `drizzle-kit generate && drizzle-kit migrate` against the
+re-exported `@naeemba/next-starter/schema` to create the auth tables. The
+package now ships canonical migrations and applies them itself.
+
+`init` no longer scaffolds `drizzle.config.ts` or `db/schema.ts` for auth —
+auth is fully package-owned now.
+
+### New apps
+
+After install:
+
+```bash
+npx next-starter migrate          # creates user/session/account/verification/passkey
+```
+
+Add to your deploy hooks:
+
+```json
+{ "scripts": {
+  "prestart": "next-starter migrate",
+  "prebuild": "next-starter migrate"
+} }
+```
+
+If you later add your OWN tables, create a `drizzle.config.ts` for them and
+chain your migrate AFTER the auth one (auth track first, so a FK to `user`
+resolves): `"prestart": "next-starter migrate && drizzle-kit migrate"`.
+
+### Existing apps — one-time baseline
+
+Your auth tables already exist (drizzle-kit created them). Adopt them into the
+package journal so `next-starter migrate` doesn't try to re-create them:
+
+```bash
+npx next-starter migrate baseline   # records shipped migrations as applied, runs NO DDL
+npx next-starter migrate            # applies anything genuinely new (no-op the first time)
+```
+
+Then stop managing the auth tables with your own drizzle-kit: delete the
+`@naeemba/next-starter/schema` re-export from `db/schema.ts` (and the file
+entirely if it held nothing else), drop the auth tables from your
+`drizzle.config.ts` scope, and delete any previously-generated auth migration
+files from your `drizzle/` folder (or wherever `out:` points in your `drizzle.config.ts`).
+If your `drizzle.config.ts` only ever served the auth tables, remove it entirely.
+
+### Cross-track foreign keys
+
+App tables that reference `user(id)` import the table directly from the
+package: `import { user } from "@naeemba/next-starter/schema"`. Run the auth
+track before your app track (`next-starter migrate && drizzle-kit migrate`) so
+`user` exists when your migration adds the FK.
+
 ## 0.6.x → 0.7.0
 
 ### `createAuth` is now async
