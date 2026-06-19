@@ -144,33 +144,45 @@ Why a `db/schema.ts` shim? drizzle-kit does not follow symlinks and requires a `
 
 ## First-time setup
 
+The package owns the auth-table migrations. Apply them with:
+
 ```bash
-npx drizzle-kit generate
-npx drizzle-kit migrate
+npx next-starter migrate
 ```
 
-That creates the `user`, `session`, `account`, `verification`, and `passkey` tables. Re-run after a package update that changes the schema (release notes will say so).
+That creates the `user`, `session`, `account`, `verification`, and `passkey`
+tables and their indexes, recorded in a `__next_starter_migrations` journal.
+Re-run after a package update whose release notes mention a schema change — it
+is idempotent.
+
+The package owns the auth tables; you do not manage them with your own
+drizzle-kit. When you add your own tables, set up `drizzle.config.ts` +
+`drizzle-kit` for those — a fully independent track with its own
+`__drizzle_migrations` journal. For an FK to `user`, import it from the package:
+`import { user } from "@naeemba/next-starter/schema"`.
 
 ## Deploy ordering
 
-Any Server Component that reads from Drizzle during static rendering — e.g. a public header/footer/banner backed by a settings table — turns `next build` into a database client. If migrations haven't run on the target environment yet, the build crashes with `relation "…" does not exist`. The trace points at `.next/server/chunks/ssr/…` rather than at your layout, so the error reads as opaque.
-
-Mirror the `prestart` migrate hook with a `prebuild` hook in your consumer's `package.json`:
+Run the package's auth migrations before start, and before a build that reads
+the DB during static rendering:
 
 ```json
 {
   "scripts": {
-    "prebuild": "drizzle-kit migrate",
+    "prebuild": "next-starter migrate",
     "build": "next build",
-    "prestart": "drizzle-kit migrate",
+    "prestart": "next-starter migrate",
     "start": "next start"
   }
 }
 ```
 
-`drizzle-kit migrate` is idempotent, so steady-state deploys take a no-op hit. The build container needs `DATABASE_URL` set — most platforms (Nixpacks/Railway/Coolify/Vercel) inject build-time env automatically.
+`next-starter migrate` is idempotent, so steady-state deploys take a no-op hit.
+The build/start container needs `DATABASE_URL`. If nothing on a static route
+touches the DB, `prestart` alone is enough.
 
-If nothing on a static route touches the DB (auth-gated dashboards render per request, so they don't trip the build), `prestart` alone is enough. The moment you add anything DB-backed to a public layout, switch to the two-hook setup.
+Once you add your own tables, chain your app migrate after the auth one so a FK
+to `user(id)` resolves: `"prestart": "next-starter migrate && drizzle-kit migrate"`.
 
 ## Enabling Google sign-in
 
@@ -214,7 +226,7 @@ export const auth = await createAuth({
 })
 ```
 
-Run a migration so the `passkey` table exists (covered by the `npx drizzle-kit generate && migrate` above).
+The `passkey` table is part of the package-owned auth schema — it is created by `npx next-starter migrate` (covered in [First-time setup](#first-time-setup)).
 
 Render the sign-in button:
 
