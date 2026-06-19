@@ -103,7 +103,7 @@
     "release:minor": "node scripts/release-preflight.mjs && npm version minor -m \"chore(release): %s\"",
     "release:major": "node scripts/release-preflight.mjs && npm version major -m \"chore(release): %s\"",
     "db:generate:auth": "drizzle-kit generate --config=drizzle.auth.config.ts",
-    "db:check:auth": "drizzle-kit generate --config=drizzle.auth.config.ts && git diff --quiet --exit-code migrations"
+    "db:check:auth": "drizzle-kit generate --config=drizzle.auth.config.ts && test -z \"$(git status --porcelain migrations)\""
   },
   "dependencies": {
     "better-auth": "^1.6.16",
