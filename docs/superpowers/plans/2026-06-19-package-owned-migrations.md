@@ -582,76 +582,87 @@ git commit -m "test(db): drift check keeps src/schema and migrations in sync"
 
 ---
 
-### Task 6: Wire the new track into CLI templates and `init` output
+### Task 6: Stop scaffolding auth drizzle wiring; add migrate guidance to `init`
 
-The 0.8.0 break: the consumer's `drizzle.config.ts` covers app tables only, and `init` tells consumers to run `next-starter migrate`.
+**Decision (governs this task):** the 0.8.0 break means auth is 100% package-owned. `init` NO LONGER scaffolds `drizzle.config.ts` or `db/schema.ts` for auth. A consumer who later adds their OWN app tables creates their own `drizzle.config.ts` then, and imports `user` etc. directly from `@naeemba/next-starter/schema` for FK/type references. This supersedes any spec wording that says `db/schema.ts` is "needed by the runtime adapter" — verified false: `createAuth()` wires the adapter to the package's internal schema (see `examples/basic/lib/auth.ts`, which passes no `db` and works).
 
 **Files:**
-- Modify: `bin/templates.mjs` (`drizzleConfig` comment + the schema-only note; `init` next-steps text lives in `bin/cli.mjs`)
-- Modify: `bin/cli.mjs` (the "Next steps" output: step 3 + add the prestart hook guidance)
-- Test: `tests/cli.test.ts` (extend existing — assert new next-steps text)
+- Modify: `bin/cli.mjs` (remove the `db/schema.ts` and `drizzle.config.ts` entries from the `files` array; remove the now-unused `drizzleConfig` / `dbSchemaReExport` imports; remove the now-dead `schema-merge` write strategy in `writeFileSafe` and its helpers `parseSymbolList` / `sameSymbolSet` and the `merged` status array + its output loop; update the "Next steps" text)
+- Modify: `bin/templates.mjs` (delete the now-unused `drizzleConfig` and `dbSchemaReExport` exports and their comment blocks)
+- Test: `tests/cli.test.ts` (remove assertions about scaffolding `db/schema.ts` / `drizzle.config.ts` and the schema-merge behavior; add an assertion for the new migrate guidance)
 
 **Interfaces:**
 - Consumes: nothing new.
-- Produces: updated scaffold guidance. `drizzleConfig` template still scaffolds a config (consumers WILL add app tables), but its comment now states it manages app tables only; auth tables are handled by `next-starter migrate`.
+- Produces: an `init` that scaffolds only the shim files (`lib/auth.ts`, `lib/auth-client.ts`, `lib/auth-server.ts`, the route handler, sign-in pages, proxy, passkey page, `.env.example`) — no auth drizzle wiring — and prints `next-starter migrate` guidance.
 
-- [ ] **Step 1: Update `drizzleConfig` doc comment in `bin/templates.mjs`**
+- [ ] **Step 1: Remove the two file entries and unused imports in `bin/cli.mjs`**
 
-Replace the comment block above `export const drizzleConfig` with:
+In the import from `./templates.mjs` (top of file), drop `dbSchemaReExport` and `drizzleConfig` from the named imports.
+
+In the `files` array inside `run()`, delete these two lines:
 
 ```js
-// drizzle.config.ts manages the CONSUMER'S OWN app tables only. The auth
-// tables (user/session/account/verification/passkey) are owned by the
-// package and applied via `next-starter migrate` — they are intentionally
-// NOT in this config's schema scope, so `drizzle-kit generate` here never
-// emits auth DDL. Keep `db/schema.ts`'s `@naeemba/next-starter/schema`
-// re-export for runtime + types, but do not point this `schema` glob at it.
-//
-// `loadEnvConfig` from `@next/env` reads .env / .env.local / .env.<NODE_ENV>
-// with Next's precedence so `pnpm db:push` works locally without an extra
-// dotenv install. `@next/env` ships with `next` (already a peer dep).
+    ["schema-merge",  join(target, `${prefix}db/schema.ts`),                      dbSchemaReExport({ passkey: args.passkey })],
+    ["consumer-skip", join(target, `drizzle.config.ts`),                          drizzleConfig({ src: useSrc })],
 ```
 
-(The template body is unchanged — `schema` still points at `db/schema.ts`; the consumer's app tables live there alongside the auth re-export, and the auth re-export is harmless to drizzle-kit because the tables already exist out-of-band. The comment sets the expectation; no behavior change in the emitted file is required for greenfield because a fresh app has no app tables yet.)
+(Leave the `proxy.ts` `consumer-skip` push intact — `consumer-skip` is still used by proxy.)
 
-- [ ] **Step 2: Update the "Next steps" output in `bin/cli.mjs`**
+- [ ] **Step 2: Remove the now-dead `schema-merge` strategy and helpers**
 
-Replace the block in the final `stdout.write` (the `Next steps:` template) lines for step 3/4 with:
+In `bin/cli.mjs`, delete: the entire `if (kind === "schema-merge") { ... }` block inside `writeFileSafe`; the helper functions `parseSymbolList` and `sameSymbolSet`; the `merged: []` entry in the `status` object; and the `for (const entry of status.merged) { ... }` output loop. (These existed only to merge the auth re-export into a consumer's `db/schema.ts`, which is no longer scaffolded.)
+
+- [ ] **Step 3: Update the "Next steps" output in `bin/cli.mjs`**
+
+Replace lines 3-4 of the `Next steps:` template (currently "3. Run your drizzle migrations against the better-auth schema" / "4. npm run dev …") with:
 
 ```
-  2. Fill in .env.example -> .env (DATABASE_URL, BETTER_AUTH_SECRET, BETTER_AUTH_URL)
   3. Apply the package-owned auth schema:
        npx next-starter migrate
-     Add it to your deploy hooks (auth track first, then your app track):
-       "prestart": "next-starter migrate && drizzle-kit migrate"
-       "prebuild": "next-starter migrate"   # only if a static route reads the DB
+     Add it to your deploy hooks so it runs before start (and before build if a
+     static route reads the DB):
+       "prestart": "next-starter migrate",
+       "prebuild": "next-starter migrate"
+     When you add your OWN tables later, create a drizzle.config.ts for them and
+     chain your migrate after the auth one: "next-starter migrate && drizzle-kit migrate".
   4. npm run dev — visit /sign-in
 ```
 
-- [ ] **Step 3: Extend `tests/cli.test.ts`**
+- [ ] **Step 4: Delete the unused templates in `bin/templates.mjs`**
 
-Add a test asserting the new guidance is printed (follow the existing test's invocation pattern — it already runs `bin/cli.mjs init` into a temp dir and inspects stdout):
+Remove the `export const dbSchemaReExport = ...` and `export const drizzleConfig = ...` blocks (and their preceding comment blocks) entirely. Nothing imports them after Step 1.
+
+- [ ] **Step 5: Update `tests/cli.test.ts`**
+
+Read the file first. Remove or rewrite any test asserting that `init` creates/merges `db/schema.ts` or creates `drizzle.config.ts`, and any test exercising schema-merge symbol-set behavior (`re-export already present`, `rewrote re-export line`, etc.) — these behaviors are gone. Add:
 
 ```ts
-it("tells the user to run next-starter migrate", async () => {
-  const { stdout } = await runInit(/* existing helper / temp dir */)
+it("tells the user to run next-starter migrate, not drizzle-kit, for auth", async () => {
+  // Reuse this file's existing init-into-temp-dir helper and stdout capture.
+  const { stdout } = await /* existing init invocation */
   expect(stdout).toContain("next-starter migrate")
-  expect(stdout).toContain('"prestart"')
+  expect(stdout).not.toContain("drizzle migrations against the better-auth schema")
+})
+
+it("does not scaffold db/schema.ts or drizzle.config.ts", async () => {
+  const { dir } = await /* existing init invocation */
+  expect(existsSync(join(dir, "db/schema.ts"))).toBe(false)
+  expect(existsSync(join(dir, "drizzle.config.ts"))).toBe(false)
 })
 ```
 
-(Use the existing helper/fixture in `tests/cli.test.ts`; match its naming. If the file uses a `runInit`-style helper, reuse it; otherwise replicate the existing init invocation in that file.)
+(Match the file's existing helper names and import `existsSync`/`join` as that file already does, or add them.)
 
-- [ ] **Step 4: Run the CLI tests**
+- [ ] **Step 6: Run the CLI tests**
 
 Run: `npx vitest run tests/cli.test.ts tests/cli-migrate.test.ts`
-Expected: PASS.
+Expected: PASS. Then `npm run typecheck` — no unused-import or undefined-symbol errors.
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add bin/templates.mjs bin/cli.mjs tests/cli.test.ts
-git commit -m "feat(cli): scaffold guidance for package-owned migrate track"
+git add bin/cli.mjs bin/templates.mjs tests/cli.test.ts
+git commit -m "feat(cli)!: stop scaffolding auth drizzle wiring; package owns migrations"
 ```
 
 ---
@@ -661,9 +672,8 @@ git commit -m "feat(cli): scaffold guidance for package-owned migrate track"
 The example currently owns auth migrations in `examples/basic/drizzle/` via drizzle-kit. Switch it to `next-starter migrate`, and update CI to run the new step plus the drift check.
 
 **Files:**
-- Modify: `examples/basic/package.json` (`db:migrate` script)
-- Delete: `examples/basic/drizzle/0000_*.sql`, `examples/basic/drizzle/0001_*.sql`, `examples/basic/drizzle/meta/*`
-- Modify: `examples/basic/drizzle.config.ts` (comment only — see note) OR leave for app tables
+- Modify: `examples/basic/package.json` (`db:migrate` script; remove `db:generate`; drop the `drizzle-kit` devDependency)
+- Delete: `examples/basic/drizzle/` (generated auth SQL), `examples/basic/db/schema.ts` (auth re-export — no longer used; `lib/auth.ts` passes no `db` and the adapter uses the package schema), `examples/basic/drizzle.config.ts`
 - Modify: `.github/workflows/ci.yml` (add drift check; change the "Apply migrations" step)
 
 **Interfaces:**
@@ -672,23 +682,30 @@ The example currently owns auth migrations in `examples/basic/drizzle/` via driz
 
 - [ ] **Step 1: Point the example's migrate script at the package CLI**
 
-In `examples/basic/package.json` `scripts`, change:
+In `examples/basic/package.json` `scripts`, change `db:migrate` to:
 
 ```json
 "db:migrate": "next-starter migrate",
 ```
 
-(Remove `db:generate` from the example — auth tables are no longer generated by the consumer. If the example later adds app tables, it can reintroduce a drizzle-kit `db:generate` for those only.)
+Remove the `db:generate` script entirely, and remove `"drizzle-kit": "^0.31.10"` from the example's `devDependencies` (the consumer no longer runs drizzle-kit for auth, and the example has no app tables of its own).
 
-- [ ] **Step 2: Remove the example's auth migrations**
+- [ ] **Step 2: Remove the example's now-unused auth drizzle files**
 
 Run:
 
 ```bash
 git rm -r examples/basic/drizzle
+git rm examples/basic/db/schema.ts examples/basic/drizzle.config.ts
 ```
 
-Expected: the old consumer-generated auth SQL is gone; the package now supplies the canonical migrations.
+Expected: the old consumer-generated auth SQL, the auth re-export, and the consumer drizzle config are gone; the package now supplies the canonical migrations and the adapter uses the package schema directly. Confirm nothing imports the deleted `db/schema.ts`:
+
+```bash
+grep -rn "db/schema" examples/basic --include=*.ts --include=*.tsx || echo "no references — safe"
+```
+
+Expected: `no references — safe`.
 
 - [ ] **Step 3: Add the drift check + update the migrate step in `.github/workflows/ci.yml`**
 
@@ -729,7 +746,8 @@ Expected: `auth migrations applied`. The 5 tables exist in `starter_test`. (Skip
 - [ ] **Step 5: Commit**
 
 ```bash
-git add examples/basic/package.json .github/workflows/ci.yml
+npm install   # refresh the lockfile after dropping the example's drizzle-kit devDep
+git add -A examples/basic .github/workflows/ci.yml package-lock.json
 git commit -m "ci: apply auth migrations via package track + drift check"
 ```
 
@@ -756,22 +774,29 @@ Before 0.8.0 you ran `drizzle-kit generate && drizzle-kit migrate` against the
 re-exported `@naeemba/next-starter/schema` to create the auth tables. The
 package now ships canonical migrations and applies them itself.
 
+`init` no longer scaffolds `drizzle.config.ts` or `db/schema.ts` for auth —
+auth is fully package-owned now.
+
 ### New apps
 
-`next-starter init` scaffolds the new wiring. After install:
+After install:
 
 ```bash
 npx next-starter migrate          # creates user/session/account/verification/passkey
 ```
 
-Add to your deploy hooks (auth track first, then your own app tables):
+Add to your deploy hooks:
 
 ```json
 { "scripts": {
-  "prestart": "next-starter migrate && drizzle-kit migrate",
+  "prestart": "next-starter migrate",
   "prebuild": "next-starter migrate"
 } }
 ```
+
+If you later add your OWN tables, create a `drizzle.config.ts` for them and
+chain your migrate AFTER the auth one (auth track first, so a FK to `user`
+resolves): `"prestart": "next-starter migrate && drizzle-kit migrate"`.
 
 ### Existing apps — one-time baseline
 
@@ -783,17 +808,19 @@ npx next-starter migrate baseline   # records shipped migrations as applied, run
 npx next-starter migrate            # applies anything genuinely new (no-op the first time)
 ```
 
-Then remove the auth tables from your own `drizzle.config.ts` scope — keep the
-`@naeemba/next-starter/schema` re-export in `db/schema.ts` (runtime + types
-still need it), but your `drizzle-kit generate` should no longer emit auth DDL.
-Delete any previously-generated auth migration files from your `drizzle/`
-folder.
+Then stop managing the auth tables with your own drizzle-kit: delete the
+`@naeemba/next-starter/schema` re-export from `db/schema.ts` (and the file
+entirely if it held nothing else), drop the auth tables from your
+`drizzle.config.ts` scope, and delete any previously-generated auth migration
+files from your `drizzle/` folder. If your `drizzle.config.ts` only ever served
+the auth tables, remove it.
 
 ### Cross-track foreign keys
 
-App tables that reference `user(id)` still work: the auth track runs before
-your app track in the deploy hook, so `user` exists when your migration adds
-the FK. Keep the ordering `next-starter migrate && drizzle-kit migrate`.
+App tables that reference `user(id)` import the table directly from the
+package: `import { user } from "@naeemba/next-starter/schema"`. Run the auth
+track before your app track (`next-starter migrate && drizzle-kit migrate`) so
+`user` exists when your migration adds the FK.
 ```
 
 - [ ] **Step 2: Replace the README "First-time setup" section**
@@ -810,12 +837,15 @@ npx next-starter migrate
 ```
 
 That creates the `user`, `session`, `account`, `verification`, and `passkey`
-tables and their indexes, recorded in a `__next_starter_migrations` journal
-(separate from your own `__drizzle_migrations`). Re-run after a package update
-whose release notes mention a schema change — it is idempotent.
+tables and their indexes, recorded in a `__next_starter_migrations` journal.
+Re-run after a package update whose release notes mention a schema change — it
+is idempotent.
 
-Your own app tables stay under your `drizzle.config.ts` / `drizzle-kit migrate`;
-the two migration tracks are independent.
+The package owns the auth tables; you do not manage them with your own
+drizzle-kit. When you add your own tables, set up `drizzle.config.ts` +
+`drizzle-kit` for those — a fully independent track with its own
+`__drizzle_migrations` journal. For an FK to `user`, import it from the package:
+`import { user } from "@naeemba/next-starter/schema"`.
 ```
 
 - [ ] **Step 3: Replace the README "Deploy ordering" section**
@@ -825,25 +855,26 @@ Replace the `## Deploy ordering` block with:
 ```markdown
 ## Deploy ordering
 
-Run the package's auth migrations before your own app migrations, and before a
-build that reads the DB during static rendering:
+Run the package's auth migrations before start, and before a build that reads
+the DB during static rendering:
 
 ```json
 {
   "scripts": {
     "prebuild": "next-starter migrate",
     "build": "next build",
-    "prestart": "next-starter migrate && drizzle-kit migrate",
+    "prestart": "next-starter migrate",
     "start": "next start"
   }
 }
 ```
 
 `next-starter migrate` is idempotent, so steady-state deploys take a no-op hit.
-The build/start container needs `DATABASE_URL`. Auth track first, then your app
-track — so an app table's FK to `user(id)` resolves.
+The build/start container needs `DATABASE_URL`. If nothing on a static route
+touches the DB, `prestart` alone is enough.
 
-If nothing on a static route touches the DB, `prestart` alone is enough.
+Once you add your own tables, chain your app migrate after the auth one so a FK
+to `user(id)` resolves: `"prestart": "next-starter migrate && drizzle-kit migrate"`.
 ```
 
 - [ ] **Step 4: Verify no stale references remain**
@@ -882,7 +913,9 @@ git commit -m "docs: package-owned migration track (0.8.0)"
 
 **Type consistency:** `migrateAuth(db, opts?)`, `baselineAuth(db, opts?)`, `resolveMigrationsFolder()`, `AUTH_MIGRATIONS_TABLE`, `MigrateAuthOptions` are used identically across Tasks 2–4 and the re-export in `src/db/index.ts`. `Db` type matches the existing alias in `src/db/index.ts`.
 
-**Placeholder scan:** No TBD/TODO. Task 6 Step 3 references the existing `tests/cli.test.ts` helper rather than inventing one — the implementer must match the existing fixture; this is intentional ("follow the existing pattern"), not a placeholder.
+**Placeholder scan:** No TBD/TODO. Task 6 Step 5 references the existing `tests/cli.test.ts` init-into-temp-dir helper rather than inventing one — the implementer must read the file and match the existing fixture; this is intentional ("follow the existing pattern"), not a placeholder.
+
+**Design decision applied:** auth is 100% package-owned — `init` scaffolds NO `drizzle.config.ts` / `db/schema.ts` (Task 6), the example drops both (Task 7), and docs route FK references through `import { user } from "@naeemba/next-starter/schema"` (Task 8). This supersedes the spec's "db/schema.ts needed by the runtime adapter" wording (verified false: the adapter uses the package's internal schema).
 
 **Open implementation note for the executor:** confirm `readMigrationFiles` is exported from `drizzle-orm/migrator` in the installed `drizzle-orm@^0.45.2` (it is in 0.45.x). If a future bump moves it, adjust the Task 3 import.
 ```
