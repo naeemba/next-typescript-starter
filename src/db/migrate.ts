@@ -1,5 +1,6 @@
 import { fileURLToPath } from "node:url"
 import { existsSync } from "node:fs"
+import { dirname, join } from "node:path"
 import { migrate } from "drizzle-orm/postgres-js/migrator"
 import { readMigrationFiles } from "drizzle-orm/migrator"
 import { sql } from "drizzle-orm"
@@ -16,22 +17,35 @@ export const AUTH_MIGRATIONS_TABLE = "__next_starter_migrations"
 /**
  * Absolute path to the `migrations/` folder shipped in the package.
  *
- * This module bundles to `dist/db/index.js`; the shipped folder is the
- * package-root sibling `migrations/`, i.e. two levels up. Migrations run in
- * Node (the CLI or a deploy hook), never inside the Next bundle, so
- * `import.meta.url` resolution is reliable here (unlike the optional-peer
- * loader, which works around Turbopack-virtualized URLs).
+ * Rather than relying on a fixed relative path (which differs between the
+ * source layout `src/db/migrate.ts` and the tsup flat-chunk build
+ * `dist/chunk-*.js`), we walk up from the module's own directory until we
+ * find an ancestor that contains `migrations/meta/_journal.json`. This
+ * works for source, any built layout, and an installed package.
+ *
+ * Migrations run in Node (the CLI or a deploy hook), never inside the Next
+ * bundle, so `import.meta.url` resolution is reliable here.
  */
 export function resolveMigrationsFolder(): string {
-  const folder = fileURLToPath(new URL("../migrations", import.meta.url))
-  if (!existsSync(folder)) {
-    throw new Error(
-      `[@naeemba/next-starter] Could not locate the bundled migrations folder.\n` +
-        `  Resolved to: ${folder}\n` +
-        `  This indicates a broken package install or an unexpected bundle layout.`,
-    )
+  const startDir = dirname(fileURLToPath(import.meta.url))
+  const candidates: string[] = []
+  let dir = startDir
+  for (let i = 0; i <= 5; i++) {
+    const candidate = join(dir, "migrations")
+    candidates.push(candidate)
+    if (existsSync(join(candidate, "meta", "_journal.json"))) {
+      return candidate
+    }
+    const parent = dirname(dir)
+    if (parent === dir) break // reached filesystem root
+    dir = parent
   }
-  return folder
+  throw new Error(
+    `[@naeemba/next-starter] Could not locate the bundled migrations folder.\n` +
+      `  Searched (migrations/meta/_journal.json) in:\n` +
+      candidates.map((c) => `    ${c}`).join("\n") +
+      `\n  This indicates a broken package install or an unexpected bundle layout.`,
+  )
 }
 
 export interface MigrateAuthOptions {
