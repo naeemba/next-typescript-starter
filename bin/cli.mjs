@@ -8,6 +8,37 @@ import {
   passkeyManagerPage, signInErrorPage,
 } from "./templates.mjs"
 
+// `next-starter migrate` / `next-starter migrate baseline`
+// Applies the package-owned auth migration track. Loaded from the built
+// dist entry so the bin and the library share one implementation.
+async function runMigrate(rest) {
+  const baseline = rest[0] === "baseline"
+  const url = process.env.DATABASE_URL
+  if (!url || !url.trim()) {
+    stdout.write(
+      "[@naeemba/next-starter] DATABASE_URL is required to run migrations but is not set.\n",
+    )
+    exit(1)
+  }
+  // postgres is an optional peer; import lazily so `init` works without it.
+  const { default: postgres } = await import("postgres")
+  const { drizzle } = await import("drizzle-orm/postgres-js")
+  const { migrateAuth, baselineAuth } = await import("../dist/db/index.js")
+  const client = postgres(url, { max: 1 })
+  try {
+    const db = drizzle(client)
+    if (baseline) {
+      const { inserted, skipped } = await baselineAuth(db)
+      stdout.write(`  baseline: recorded ${inserted} migration(s), ${skipped} already present\n`)
+    } else {
+      await migrateAuth(db)
+      stdout.write(`  auth migrations applied\n`)
+    }
+  } finally {
+    await client.end({ timeout: 5 })
+  }
+}
+
 function parseArgs(input) {
   const flags = {
     force: false,
@@ -49,6 +80,13 @@ function helpText() {
 
   Scaffold the seven shim files that wire @naeemba/next-starter into a
   Next.js app.
+
+  next-starter migrate [baseline]
+
+  Apply the package-owned auth migrations (user/session/account/verification/
+  passkey) against DATABASE_URL, recorded in __next_starter_migrations.
+  Use \`migrate baseline\` ONCE on a pre-0.8.0 app to adopt already-created
+  auth tables without re-running their DDL.
 
   Options:
     --force          overwrite starter-owned files that already exist
@@ -381,6 +419,10 @@ async function run() {
   const subcommand = argv[2]
   if (subcommand === "--help" || subcommand === "-h" || subcommand === undefined) {
     stdout.write(helpText())
+    return
+  }
+  if (subcommand === "migrate") {
+    await runMigrate(argv.slice(3))
     return
   }
   if (subcommand !== "init") {
