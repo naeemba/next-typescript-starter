@@ -1,6 +1,8 @@
 import { fileURLToPath } from "node:url"
 import { existsSync } from "node:fs"
 import { migrate } from "drizzle-orm/postgres-js/migrator"
+import { readMigrationFiles } from "drizzle-orm/migrator"
+import { sql } from "drizzle-orm"
 import type { drizzle } from "drizzle-orm/postgres-js"
 import type * as schema from "../schema/index.js"
 
@@ -45,4 +47,55 @@ export interface MigrateAuthOptions {
 export async function migrateAuth(db: Db, opts: MigrateAuthOptions = {}): Promise<void> {
   const migrationsFolder = opts.migrationsFolder ?? resolveMigrationsFolder()
   await migrate(db, { migrationsFolder, migrationsTable: AUTH_MIGRATIONS_TABLE })
+}
+
+/**
+ * Mark the shipped auth migrations as already-applied WITHOUT running their
+ * DDL. For existing apps (pre-0.8.0) whose auth tables were created by the
+ * old consumer-owned drizzle-kit path: this writes the same journal rows a
+ * fresh `migrateAuth` would have written, so future `migrateAuth` calls skip
+ * everything up to this point and apply only genuinely-new migrations.
+ *
+ * Idempotent: rows whose hash is already present are left untouched.
+ *
+ * Mirrors the drizzle postgres-js migrator's own bookkeeping: schema
+ * `drizzle`, table `__next_starter_migrations(id serial pk, hash text,
+ * created_at bigint)`, one row per migration with created_at = folderMillis.
+ */
+export async function baselineAuth(
+  db: Db,
+  opts: MigrateAuthOptions = {},
+): Promise<{ inserted: number; skipped: number }> {
+  const migrationsFolder = opts.migrationsFolder ?? resolveMigrationsFolder()
+  const migrations = readMigrationFiles({ migrationsFolder })
+
+  await db.execute(sql`CREATE SCHEMA IF NOT EXISTS "drizzle"`)
+  await db.execute(
+    sql.raw(
+      `CREATE TABLE IF NOT EXISTS "drizzle"."${AUTH_MIGRATIONS_TABLE}" ` +
+        `(id SERIAL PRIMARY KEY, hash text NOT NULL, created_at bigint)`,
+    ),
+  )
+
+  let inserted = 0
+  let skipped = 0
+  for (const m of migrations) {
+    const existing = await db.execute(
+      sql.raw(
+        `SELECT 1 FROM "drizzle"."${AUTH_MIGRATIONS_TABLE}" WHERE hash = '${m.hash}' LIMIT 1`,
+      ),
+    )
+    if ((existing as unknown as unknown[]).length > 0) {
+      skipped++
+      continue
+    }
+    await db.execute(
+      sql.raw(
+        `INSERT INTO "drizzle"."${AUTH_MIGRATIONS_TABLE}" (hash, created_at) ` +
+          `VALUES ('${m.hash}', ${m.folderMillis})`,
+      ),
+    )
+    inserted++
+  }
+  return { inserted, skipped }
 }
