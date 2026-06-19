@@ -6,7 +6,7 @@ const migrateSpy = vi.hoisted(() =>
 )
 vi.mock("drizzle-orm/postgres-js/migrator", () => ({ migrate: migrateSpy }))
 
-import { migrateAuth, resolveMigrationsFolder } from "../src/db/migrate.js"
+import { migrateAuth, resolveMigrationsFolder, AUTH_MIGRATIONS_TABLE } from "../src/db/migrate.js"
 import { existsSync } from "node:fs"
 import { join } from "node:path"
 
@@ -23,7 +23,7 @@ describe("migrateAuth", () => {
     await migrateAuth(fakeDb)
     expect(migrateSpy).toHaveBeenCalledWith(
       fakeDb,
-      expect.objectContaining({ migrationsTable: "__next_starter_migrations" }),
+      expect.objectContaining({ migrationsTable: AUTH_MIGRATIONS_TABLE }),
     )
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     const call = migrateSpy.mock.calls[0]![1]!

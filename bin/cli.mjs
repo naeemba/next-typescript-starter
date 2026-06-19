@@ -12,6 +12,12 @@ import {
 // Applies the package-owned auth migration track. Loaded from the built
 // dist entry so the bin and the library share one implementation.
 async function runMigrate(rest) {
+  if (rest[0] !== undefined && rest[0] !== "baseline") {
+    stdout.write(
+      `[@naeemba/next-starter] Unknown migrate subcommand: "${rest[0]}". Valid forms: migrate / migrate baseline\n`,
+    )
+    exit(1)
+  }
   const baseline = rest[0] === "baseline"
   const url = process.env.DATABASE_URL
   if (!url || !url.trim()) {
