@@ -277,7 +277,10 @@ export async function createAuth(opts: CreateAuthOptions = {}): Promise<Auth> {
   if (opts.passkey) {
     const passkeyMod = await loadOptionalPeerAsync<PasskeyServerModule>(
       "@better-auth/passkey",
-      () => import("@better-auth/passkey") as Promise<PasskeyServerModule>,
+      () =>
+        import(
+          /* webpackIgnore: true */ /* turbopackIgnore: true */ "@better-auth/passkey"
+        ) as Promise<PasskeyServerModule>,
       "createAuth({ passkey })",
     )
     const url = new URL(env.BETTER_AUTH_URL)

@@ -1,21 +1,31 @@
-import {
-  Body,
-  Button,
-  Container,
-  Head,
-  Heading,
-  Html,
-  Preview,
-  Section,
-  Text,
-} from "@react-email/components"
+// The @react-email/components module is injected at runtime by
+// magic-link-lazy.ts (which has already probed that the optional peer is
+// installed) rather than statically imported here. A top-level
+// `import … from "@react-email/components"` would make magic-link.js a hard
+// build dependency: a consumer's bundler statically follows the
+// `import("./magic-link.js")` in magic-link-lazy and would fail to resolve the
+// omitted peer at build time. As a type-only import this reference is erased.
+type ReactEmailComponents = typeof import("@react-email/components")
 
 interface Props {
   url: string
   appName?: string
 }
 
-export function MagicLinkEmail({ url, appName = "your account" }: Props) {
+export function MagicLinkEmail(
+  {
+    Html,
+    Head,
+    Preview,
+    Body,
+    Container,
+    Heading,
+    Text,
+    Section,
+    Button,
+  }: ReactEmailComponents,
+  { url, appName = "your account" }: Props,
+) {
   return (
     <Html>
       <Head />
