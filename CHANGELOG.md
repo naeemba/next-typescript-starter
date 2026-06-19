@@ -2,6 +2,28 @@
 
 All notable changes to `@naeemba/next-starter`. Migration steps live in [UPGRADING.md](./UPGRADING.md).
 
+## [0.8.0](https://github.com/naeemba/next-typescript-starter/compare/v0.7.2...v0.8.0) (2026-06-19)
+
+### ⚠ BREAKING CHANGES
+
+* **cli:** stop scaffolding auth drizzle wiring; package owns migrations
+
+### Features
+
+* **cli:** add migrate and migrate baseline subcommands ([281013a](https://github.com/naeemba/next-typescript-starter/commit/281013a6cb2eba4e83122c9fdf9a0020bcd0c510))
+* **cli:** stop scaffolding auth drizzle wiring; package owns migrations ([e42b0fa](https://github.com/naeemba/next-typescript-starter/commit/e42b0fa5cb9ace8b8f85d4e12c562dea221e51ba))
+* **db:** add baselineAuth for adopting pre-0.8.0 databases ([a05ed01](https://github.com/naeemba/next-typescript-starter/commit/a05ed01ef000d8bf6b519da7f1f1209e7bc41824))
+* **db:** add migrateAuth + resolveMigrationsFolder ([fe96b4b](https://github.com/naeemba/next-typescript-starter/commit/fe96b4ba0407b6f2ee31268e36e261508d08c456))
+* **db:** generate canonical auth migration lineage ([8c33e6c](https://github.com/naeemba/next-typescript-starter/commit/8c33e6c7e079313df382e9bd9da3b963f2fffdc7))
+
+### Bug Fixes
+
+* **build:** keep optional peers out of static bundler resolution ([671720d](https://github.com/naeemba/next-typescript-starter/commit/671720ddc86aac8bcfa71faa5c1561e330dc01b6))
+* **cli:** label top-level error by subcommand, not always "init" ([7f3b7af](https://github.com/naeemba/next-typescript-starter/commit/7f3b7af9386a08c12a4cff46c61790a7232b67d9))
+* **db:** guard baselineAuth against missing auth tables ([ff33dda](https://github.com/naeemba/next-typescript-starter/commit/ff33dda4bd717882a24c1d05b2fb9393ed635716))
+* **db:** make db:check:auth robust to untracked migration files ([b784d11](https://github.com/naeemba/next-typescript-starter/commit/b784d118d739d8f81953ee7fd493fd7cda7ffc16))
+* **db:** resolve migrations folder by walking up to the _journal.json marker ([0e91dc3](https://github.com/naeemba/next-typescript-starter/commit/0e91dc3cce4deee61ed6e136304a6422028041fc))
+* guard unknown migrate subcommands + final-review polish ([facd69c](https://github.com/naeemba/next-typescript-starter/commit/facd69ca66e220f45ec505f583bb5384e1d41cf4))
 ## [0.7.2](https://github.com/naeemba/next-typescript-starter/compare/v0.7.1...v0.7.2) (2026-06-15)
 ## [0.7.1](https://github.com/naeemba/next-typescript-starter/compare/v0.7.0...v0.7.1) (2026-06-14)
 
