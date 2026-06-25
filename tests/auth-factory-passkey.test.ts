@@ -5,7 +5,13 @@ import { setupAuthEnv, restoreAuthEnv, pluginIds, findPlugin } from "./helpers/a
 beforeEach(() => setupAuthEnv())
 afterEach(() => restoreAuthEnv())
 
-type PasskeyOpts = { rpID?: string; rpName?: string; origin?: string }
+type PasskeyOpts = {
+  rpID?: string
+  rpName?: string
+  origin?: string
+  registration?: { extensions?: Record<string, unknown> }
+  authentication?: { extensions?: Record<string, unknown> }
+}
 const passkeyPlugin = (auth: unknown) =>
   findPlugin(auth, "passkey") as { options?: PasskeyOpts } | undefined
 
@@ -65,5 +71,28 @@ describe("createAuth({ passkey })", () => {
     process.env.BETTER_AUTH_URL = "https://app.example.com:8080"
     const auth = await createAuth({ db: {} as never, passkey: {} })
     expect(passkeyPlugin(auth)?.options?.rpID).toBe("app.example.com")
+  })
+
+  it("forwards registration.extensions through to the plugin (PRF opt-in)", async () => {
+    const auth = await createAuth({
+      db: {} as never,
+      passkey: { rpName: "Acme", registration: { extensions: { prf: {} } } },
+    })
+    expect(passkeyPlugin(auth)?.options?.registration).toEqual({ extensions: { prf: {} } })
+  })
+
+  it("forwards authentication.extensions through to the plugin", async () => {
+    const auth = await createAuth({
+      db: {} as never,
+      passkey: { authentication: { extensions: { prf: {} } } },
+    })
+    expect(passkeyPlugin(auth)?.options?.authentication).toEqual({ extensions: { prf: {} } })
+  })
+
+  it("does NOT set registration / authentication when only rpName is passed", async () => {
+    const auth = await createAuth({ db: {} as never, passkey: { rpName: "Acme" } })
+    const opts = passkeyPlugin(auth)?.options
+    expect(opts).not.toHaveProperty("registration")
+    expect(opts).not.toHaveProperty("authentication")
   })
 })

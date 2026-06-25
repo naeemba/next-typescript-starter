@@ -58,6 +58,14 @@ export const auth = await createAuth()
 
 `createAuth` accepts options for `magicLink` (custom expiry, `allowlist`, custom `email` template), `session` (override session cookie / expiry settings), `google`, `passkey`, `singleAdmin` (lock sign-in to one or more emails), `accountLinking`, `rateLimit` (better-auth's rate-limit knob; `BETTER_AUTH_RATE_LIMIT_DISABLED=1` env force-disables for local dev), and `transport` (BYO email delivery — replaces the built-in Resend/console dispatch for magic-link mail).
 
+`passkey` also forwards `registration` and `authentication` to the underlying plugin, so you can opt into WebAuthn extensions. To enable the PRF extension (lets a passkey derive a stable client-side secret, e.g. for wrapping an encryption key):
+
+```ts
+createAuth({ passkey: { rpName: "Your App", registration: { extensions: { prf: {} } } } })
+```
+
+`registration.extensions` / `authentication.extensions` are typed against the standard `AuthenticationExtensionsClientInputs`, so this type-checks without `@better-auth/passkey` installed.
+
 ### lib/auth-client.ts
 
 ```ts

@@ -17,8 +17,32 @@ import { parseEnv } from "./config.js"
 // is ESM-only, so a sync `require()` from CJS contexts hits ERR_REQUIRE_ESM.
 // `await import()` works for both CJS and ESM, so this is the future-proof seam.
 interface PasskeyServerModule {
-  passkey: (opts: { rpName: string; rpID: string; origin: string }) =>
-    NonNullable<BetterAuthOptions["plugins"]>[number]
+  passkey: (opts: {
+    rpName: string
+    rpID: string
+    origin: string
+    registration?: PasskeyRegistrationConfig
+    authentication?: PasskeyAuthenticationConfig
+  }) => NonNullable<BetterAuthOptions["plugins"]>[number]
+}
+
+// Structural subset of `@better-auth/passkey`'s `PasskeyRegistrationOptions` /
+// `PasskeyAuthenticationOptions`, re-declared here rather than imported for the
+// same reason `PasskeyServerModule` is hand-rolled: importing the plugin's
+// types (even `import type`) would force tsc to resolve `@better-auth/passkey`
+// at consumer build time even when passkey is disabled and the optional peer is
+// not installed — re-introducing exactly the coupling the async-load seam
+// avoids. `extensions` is typed against the DOM-lib
+// `AuthenticationExtensionsClientInputs`, which structurally matches the
+// `@simplewebauthn/server` type the plugin consumes, so a consumer's
+// `{ extensions: { prf: {} } }` type-checks without the peer present. The whole
+// object is forwarded verbatim to the plugin at runtime; we surface `extensions`
+// because that's the documented passthrough (WebAuthn extensions such as PRF).
+interface PasskeyRegistrationConfig {
+  extensions?: AuthenticationExtensionsClientInputs
+}
+interface PasskeyAuthenticationConfig {
+  extensions?: AuthenticationExtensionsClientInputs
 }
 
 type DrizzleAdapterDb = Parameters<typeof drizzleAdapter>[0]
@@ -101,6 +125,19 @@ export interface CreateAuthOptions {
     rpName?: string
     rpID?: string
     origin?: string
+    /**
+     * Forwarded verbatim to the passkey plugin's `registration` option. Use
+     * `registration.extensions` to enable WebAuthn extensions at passkey
+     * registration — e.g. `{ extensions: { prf: {} } }` to turn on the PRF
+     * extension so a passkey can derive a stable client-side secret.
+     */
+    registration?: PasskeyRegistrationConfig
+    /**
+     * Forwarded verbatim to the passkey plugin's `authentication` option. Use
+     * `authentication.extensions` to set per-assertion WebAuthn extension
+     * defaults (e.g. PRF `eval`) at passkey authentication time.
+     */
+    authentication?: PasskeyAuthenticationConfig
   }
   accountLinking?: false | { trustedProviders: string[] }
   /**
@@ -291,6 +328,10 @@ export async function createAuth(opts: CreateAuthOptions = {}): Promise<Auth> {
       rpName: opts.passkey.rpName ?? url.hostname,
       rpID: opts.passkey.rpID ?? url.hostname,
       origin: opts.passkey.origin ?? url.origin,
+      // Conditional spread so consumers passing only rpName/rpID/origin keep
+      // an identical plugin config — these never appear unless explicitly set.
+      ...(opts.passkey.registration && { registration: opts.passkey.registration }),
+      ...(opts.passkey.authentication && { authentication: opts.passkey.authentication }),
     })
     config.plugins = [...(config.plugins ?? []), plugin]
   }

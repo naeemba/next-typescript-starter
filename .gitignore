@@ -17,6 +17,7 @@ coverage/
 
 # Tooling
 .claude/
+.codegraph/
 .turbo/
 .playwright/
 playwright-report/
