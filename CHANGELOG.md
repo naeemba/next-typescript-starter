@@ -2,6 +2,11 @@
 
 All notable changes to `@naeemba/next-starter`. Migration steps live in [UPGRADING.md](./UPGRADING.md).
 
+## [0.9.0](https://github.com/naeemba/next-typescript-starter/compare/v0.8.0...v0.9.0) (2026-06-25)
+
+### Features
+
+* **auth:** forward passkey registration/authentication options ([ee0f55c](https://github.com/naeemba/next-typescript-starter/commit/ee0f55c64919abd8dacdb909dd60679494daec48))
 ## [0.8.0](https://github.com/naeemba/next-typescript-starter/compare/v0.7.2...v0.8.0) (2026-06-19)
 
 ### ⚠ BREAKING CHANGES
