@@ -1,5 +1,15 @@
 # Upgrading
 
+## 0.9.x → 0.10.0
+
+### Postal email provider (additive, non-breaking)
+
+`EMAIL_TRANSPORT` now selects the built-in email provider: `resend`, `postal`,
+or `console`. Leaving it unset preserves the previous behavior exactly (Resend
+when `RESEND_API_KEY` is set, otherwise console) — no action required. To use a
+self-hosted Postal server, set `EMAIL_TRANSPORT=postal` with `POSTAL_API_URL`
+and `POSTAL_API_KEY`.
+
 ## 0.7.x → 0.8.0
 
 **BREAKING — auth tables are now migrated by the package, not your drizzle-kit.**

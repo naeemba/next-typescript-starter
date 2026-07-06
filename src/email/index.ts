@@ -1,6 +1,8 @@
 import type { ReactElement } from "react"
 import { loadOptionalPeerAsync } from "../internal/optional-peer.js"
 import { sendViaConsole, type EmailArgs as TransportArgs } from "./console.js"
+import { sendViaPostal } from "./postal.js"
+import { resolveProvider } from "./provider.js"
 import { sendViaResend } from "./resend.js"
 
 /**
@@ -33,14 +35,15 @@ export async function sendEmail(args: EmailArgs): Promise<void> {
       "[@naeemba/next-starter] sendEmail requires either `from` or process.env.EMAIL_FROM."
     )
   }
+  const provider = args.transport ? null : resolveProvider(process.env)
+
   // Only the built-in dispatch path falls back to console-logging in
-  // production. A custom transport is the consumer's surface — they're
-  // expected to handle their own provider config and shouldn't see this
-  // warning when their wrapper is doing real delivery.
-  if (!args.transport && process.env.NODE_ENV === "production" && !process.env.RESEND_API_KEY) {
+  // production. A custom transport is the consumer's surface — they handle
+  // their own provider config and shouldn't see this warning.
+  if (!args.transport && process.env.NODE_ENV === "production" && provider === "console") {
     console.warn(
-      "[@naeemba/next-starter] WARNING: NODE_ENV=production but RESEND_API_KEY is unset. " +
-        "Emails will be written to server logs instead of sent."
+      "[@naeemba/next-starter] WARNING: NODE_ENV=production but the resolved email " +
+        "provider is 'console'. Emails will be written to server logs instead of sent."
     )
   }
 
@@ -70,8 +73,10 @@ export async function sendEmail(args: EmailArgs): Promise<void> {
 
   if (args.transport) {
     await args.transport(transportArgs)
-  } else if (process.env.RESEND_API_KEY) {
+  } else if (provider === "resend") {
     await sendViaResend(transportArgs)
+  } else if (provider === "postal") {
+    await sendViaPostal(transportArgs)
   } else {
     await sendViaConsole(transportArgs)
   }

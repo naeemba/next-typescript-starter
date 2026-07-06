@@ -105,6 +105,44 @@ describe("parseEnv", () => {
     expect(env.GOOGLE_CLIENT_ID).toBeUndefined()
     expect(env.GOOGLE_CLIENT_SECRET).toBeUndefined()
   })
+
+  it("accepts EMAIL_TRANSPORT=postal when both POSTAL_* vars are set", () => {
+    const env = parseEnv({
+      ...BASE_ENV,
+      EMAIL_TRANSPORT: "postal",
+      POSTAL_API_URL: "https://postal.example.com",
+      POSTAL_API_KEY: "postal_key_123",
+    })
+    expect(env.EMAIL_TRANSPORT).toBe("postal")
+    expect(env.POSTAL_API_URL).toBe("https://postal.example.com")
+  })
+
+  it("rejects EMAIL_TRANSPORT=postal when POSTAL_API_KEY is missing", () => {
+    expect(() =>
+      parseEnv({
+        ...BASE_ENV,
+        EMAIL_TRANSPORT: "postal",
+        POSTAL_API_URL: "https://postal.example.com",
+      })
+    ).toThrow(/POSTAL_API_KEY is required when EMAIL_TRANSPORT=postal/)
+  })
+
+  it("rejects EMAIL_TRANSPORT=resend when RESEND_API_KEY is missing", () => {
+    expect(() =>
+      parseEnv({ ...BASE_ENV, EMAIL_TRANSPORT: "resend" })
+    ).toThrow(/RESEND_API_KEY is required when EMAIL_TRANSPORT=resend/)
+  })
+
+  it("does not require POSTAL_* when EMAIL_TRANSPORT is unset", () => {
+    const env = parseEnv({ ...BASE_ENV })
+    expect(env.EMAIL_TRANSPORT).toBeUndefined()
+  })
+
+  it("rejects an unknown EMAIL_TRANSPORT value", () => {
+    expect(() =>
+      parseEnv({ ...BASE_ENV, EMAIL_TRANSPORT: "sendgrid" })
+    ).toThrow(/EMAIL_TRANSPORT/)
+  })
 })
 
 describe("parseEnv with overrides", () => {
