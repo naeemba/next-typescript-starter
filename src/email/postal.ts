@@ -20,7 +20,7 @@ export async function sendViaPostal(args: EmailArgs): Promise<void> {
     throw new Error("[@naeemba/next-starter] POSTAL_API_KEY is required to use the Postal transport.")
   }
 
-  const res = await fetch(`${url}/api/v1/send/message`, {
+  const response = await fetch(`${url}/api/v1/send/message`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -37,10 +37,10 @@ export async function sendViaPostal(args: EmailArgs): Promise<void> {
 
   // Postal answers HTTP 200 even on failure, distinguishing outcomes via a
   // JSON `status` field ('success' | 'error' | 'parameter-error').
-  const body = (await res.json().catch(() => null)) as { status?: string } | null
-  if (!res.ok || body?.status !== "success") {
+  const body = (await response.json().catch(() => null)) as { status?: string } | null
+  if (!response.ok || body?.status !== "success") {
     throw new Error(
-      `[@naeemba/next-starter] Postal send failed (HTTP ${res.status}): ${JSON.stringify(body)}`
+      `[@naeemba/next-starter] Postal send failed (HTTP ${response.status}): ${JSON.stringify(body)}`
     )
   }
 }

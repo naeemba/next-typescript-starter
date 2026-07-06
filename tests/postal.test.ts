@@ -37,11 +37,11 @@ describe("sendViaPostal", () => {
   it("posts to the Postal send endpoint with the API key header and mapped body", async () => {
     await sendViaPostal(ARGS)
     expect(fetchMock).toHaveBeenCalledTimes(1)
-    const [url, init] = fetchMock.mock.calls[0]!
+    const [url, requestInit] = fetchMock.mock.calls[0]!
     expect(url).toBe("https://postal.example.com/api/v1/send/message")
-    expect(init.method).toBe("POST")
-    expect(init.headers["X-Server-API-Key"]).toBe("postal_key_123")
-    expect(JSON.parse(init.body)).toEqual({
+    expect(requestInit.method).toBe("POST")
+    expect(requestInit.headers["X-Server-API-Key"]).toBe("postal_key_123")
+    expect(JSON.parse(requestInit.body)).toEqual({
       to: ["user@example.com"],
       from: "auth@example.com",
       subject: "Sign in",
