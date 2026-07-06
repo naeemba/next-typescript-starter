@@ -12,19 +12,19 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
-    "@better-auth/passkey": "^1.6.16",
+    "@better-auth/passkey": "^1.6.23",
     "@naeemba/next-starter": "file:../..",
     "@react-email/components": "^1.0.12",
-    "@react-email/render": "^2.0.8",
-    "next": "^16.2.9",
+    "@react-email/render": "^2.0.10",
+    "next": "^16.2.10",
     "postgres": "^3.4.9",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"
   },
   "devDependencies": {
-    "@playwright/test": "^1.60.0",
-    "@types/node": "^22.0.0",
-    "@types/react": "^19.2.0",
+    "@playwright/test": "^1.61.1",
+    "@types/node": "^26.1.0",
+    "@types/react": "^19.2.17",
     "typescript": "^6.0.3"
   }
 }
