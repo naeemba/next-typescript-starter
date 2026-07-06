@@ -19,6 +19,9 @@ const optionalString = () =>
 const optionalEmail = () =>
   z.preprocess(emptyToUndefined, z.string().email().optional())
 
+const optionalUrl = () =>
+  z.preprocess(emptyToUndefined, z.string().url().optional())
+
 const requiredString = (message: string) =>
   z.preprocess(emptyToUndefined, z.string({ error: message }).min(1, message))
 
@@ -69,10 +72,39 @@ const EnvSchema = z.object({
   RESEND_API_KEY: optionalString(),
   GOOGLE_CLIENT_ID: optionalString(),
   GOOGLE_CLIENT_SECRET: optionalString(),
+  EMAIL_TRANSPORT: z.preprocess(
+    emptyToUndefined,
+    z.enum(["resend", "postal", "console"]).optional()
+  ),
+  POSTAL_API_URL: optionalUrl(),
+  POSTAL_API_KEY: optionalString(),
   // DATABASE_PREPARE / DATABASE_POOL_MAX / DATABASE_IDLE_TIMEOUT are validated
   // by createDbOptionsFromEnv (src/db/index.ts), the single reader for those
   // vars. Do NOT add a parallel Zod entry here — it would let the two
   // definitions drift.
+}).superRefine((val, ctx) => {
+  // A provider's credentials are required only when that provider is
+  // explicitly selected. When EMAIL_TRANSPORT is unset the auto heuristic
+  // applies and nothing here is enforced — preserving prior behavior.
+  if (val.EMAIL_TRANSPORT === "postal") {
+    for (const key of ["POSTAL_API_URL", "POSTAL_API_KEY"] as const) {
+      if (!val[key]) {
+        ctx.addIssue({
+          code: "custom",
+          path: [key],
+          message: `${key} is required when EMAIL_TRANSPORT=postal`,
+        })
+      }
+    }
+  } else if (val.EMAIL_TRANSPORT === "resend") {
+    if (!val.RESEND_API_KEY) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["RESEND_API_KEY"],
+        message: "RESEND_API_KEY is required when EMAIL_TRANSPORT=resend",
+      })
+    }
+  }
 })
 
 export type Env = z.infer<typeof EnvSchema>
