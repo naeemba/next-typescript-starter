@@ -360,6 +360,24 @@ export function proxy(req: NextRequest) {
 
 ## Dev experience
 
+### Email delivery
+
+`EMAIL_TRANSPORT` selects the built-in provider:
+
+| `EMAIL_TRANSPORT` | Delivery | Required env |
+| ----------------- | -------- | ------------ |
+| _(unset)_         | Auto: Resend if `RESEND_API_KEY` is set, else console | — |
+| `resend`          | Resend HTTPS API | `RESEND_API_KEY` |
+| `postal`          | Self-hosted Postal HTTPS API | `POSTAL_API_URL`, `POSTAL_API_KEY` |
+| `console`         | Logs to the server console (dev) | — |
+
+All providers use `EMAIL_FROM` as the sender. A custom `transport` passed to
+`createAuth` / `sendEmail` overrides this selection entirely.
+
+**Postal:** point `POSTAL_API_URL` at your Postal server (e.g.
+`https://postal.example.com`) and set `POSTAL_API_KEY` to a server API
+credential. Delivery uses the Postal HTTPS API — no SMTP client is added.
+
 If `RESEND_API_KEY` is unset, the magic link is written to your server logs in a line that looks like:
 
 ```
