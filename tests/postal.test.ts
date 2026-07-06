@@ -50,6 +50,13 @@ describe("sendViaPostal", () => {
     })
   })
 
+  it("strips trailing slashes from POSTAL_API_URL before joining the path", async () => {
+    process.env.POSTAL_API_URL = "https://postal.example.com/"
+    await sendViaPostal(ARGS)
+    const [url] = fetchMock.mock.calls[0]!
+    expect(url).toBe("https://postal.example.com/api/v1/send/message")
+  })
+
   it("throws when Postal returns a non-success status", async () => {
     fetchMock.mockResolvedValueOnce({
       ok: true,

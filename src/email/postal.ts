@@ -20,7 +20,7 @@ export async function sendViaPostal(args: EmailArgs): Promise<void> {
     throw new Error("[@naeemba/next-starter] POSTAL_API_KEY is required to use the Postal transport.")
   }
 
-  const response = await fetch(`${url}/api/v1/send/message`, {
+  const response = await fetch(`${url.replace(/\/+$/, "")}/api/v1/send/message`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
