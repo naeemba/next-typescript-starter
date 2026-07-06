@@ -2,6 +2,7 @@
 
 All notable changes to `@naeemba/next-starter`. Migration steps live in [UPGRADING.md](./UPGRADING.md).
 
+## [0.9.1](https://github.com/naeemba/next-typescript-starter/compare/v0.9.0...v0.9.1) (2026-07-06)
 ## [0.9.0](https://github.com/naeemba/next-typescript-starter/compare/v0.8.0...v0.9.0) (2026-06-25)
 
 ### Features
