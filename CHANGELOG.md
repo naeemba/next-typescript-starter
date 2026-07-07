@@ -2,6 +2,18 @@
 
 All notable changes to `@naeemba/next-starter`. Migration steps live in [UPGRADING.md](./UPGRADING.md).
 
+## [0.10.0](https://github.com/naeemba/next-typescript-starter/compare/v0.9.1...v0.10.0) (2026-07-07)
+
+### Features
+
+* **auth:** validate Postal env vars for EMAIL_TRANSPORT=postal ([dd4b64d](https://github.com/naeemba/next-typescript-starter/commit/dd4b64d405cb62fe8fa8bb8ee5ac65043c4f743e))
+* **email:** add Postal HTTPS API transport ([a4d2d18](https://github.com/naeemba/next-typescript-starter/commit/a4d2d18f56eea3e52e8723d59b965f3852ce7959))
+* **email:** add provider resolver for EMAIL_TRANSPORT selection ([ce75f2c](https://github.com/naeemba/next-typescript-starter/commit/ce75f2c78a5d266dccf71dad1f088ae486b8b22b))
+* **email:** dispatch Postal via EMAIL_TRANSPORT in sendEmail ([a2e5c49](https://github.com/naeemba/next-typescript-starter/commit/a2e5c49523ce19d33c59b01b54f5f4a5713b7922))
+
+### Bug Fixes
+
+* **email:** strip trailing slashes from POSTAL_API_URL before path join ([18b4522](https://github.com/naeemba/next-typescript-starter/commit/18b45226a05879e9d15d9b5d5b1d72569f4e53ac))
 ## [0.9.1](https://github.com/naeemba/next-typescript-starter/compare/v0.9.0...v0.9.1) (2026-07-06)
 ## [0.9.0](https://github.com/naeemba/next-typescript-starter/compare/v0.8.0...v0.9.0) (2026-06-25)
 
