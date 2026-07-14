@@ -1,6 +1,6 @@
 {
   "name": "@naeemba/next-starter",
-  "version": "0.10.0",
+  "version": "0.10.1",
   "description": "Opinionated Next.js + Drizzle + Better Auth starter, shipped as a versioned package.",
   "license": "MIT",
   "repository": {
