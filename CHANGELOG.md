@@ -2,6 +2,11 @@
 
 All notable changes to `@naeemba/next-starter`. Migration steps live in [UPGRADING.md](./UPGRADING.md).
 
+## [0.10.2](https://github.com/naeemba/next-typescript-starter/compare/v0.10.1...v0.10.2) (2026-08-10)
+
+### Bug Fixes
+
+* pin examples/basic typescript back to 6.0.3 in lockfile ([e21761f](https://github.com/naeemba/next-typescript-starter/commit/e21761f4b0894c9221455fc36c542ab131db06aa))
 ## [0.10.1](https://github.com/naeemba/next-typescript-starter/compare/v0.10.0...v0.10.1) (2026-07-14)
 ## [0.10.0](https://github.com/naeemba/next-typescript-starter/compare/v0.9.1...v0.10.0) (2026-07-07)
 
