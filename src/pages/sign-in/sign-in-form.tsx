@@ -291,7 +291,7 @@ export function SignInForm(props: SignInFormProps) {
             {status.google === "sending" ? "Signing in…" : googleLabel}
           </button>
           {status.google === "error" && (
-            <p {...styled(classNames?.error, errorStyle)}>
+            <p role="alert" {...styled(classNames?.error, errorStyle)}>
               {errorCopy(errors.google)}
             </p>
           )}
@@ -309,7 +309,7 @@ export function SignInForm(props: SignInFormProps) {
             {status.passkey === "sending" ? "Signing in…" : passkeyLabel}
           </button>
           {status.passkey === "error" && (
-            <p {...styled(classNames?.error, errorStyle)}>
+            <p role="alert" {...styled(classNames?.error, errorStyle)}>
               {errorCopy(errors.passkey)}
             </p>
           )}
@@ -356,7 +356,7 @@ export function SignInForm(props: SignInFormProps) {
               {status.magicLink === "sending" ? "Sending…" : submitLabel}
             </button>
             {status.magicLink === "error" && (
-              <p {...styled(classNames?.error, magicLinkErrorStyle)}>
+              <p role="alert" {...styled(classNames?.error, magicLinkErrorStyle)}>
                 {errorCopy(errors.magicLink)}
               </p>
             )}

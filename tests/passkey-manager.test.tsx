@@ -3,19 +3,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { StrictMode } from "react"
 import { render, screen, fireEvent, waitFor, cleanup, act } from "@testing-library/react"
 import { PasskeyManager } from "../src/pages/passkey-manager/index.js"
-import type { PasskeyAuthClient } from "../src/client/index.js"
+import { makeClient } from "./helpers/passkey-client.js"
 import { enableWebAuthn, disableWebAuthn } from "./helpers/webauthn.js"
 
 afterEach(() => cleanup())
-
-function makeClient(opts: { addPasskey?: PasskeyAuthClient["passkey"]["addPasskey"] } = {}): PasskeyAuthClient {
-  return {
-    signIn: { passkey: vi.fn(async () => ({ error: null })) },
-    passkey: {
-      addPasskey: opts.addPasskey ?? vi.fn(async () => ({ data: { id: "p1" }, error: null })),
-    },
-  }
-}
 
 describe("<PasskeyManager/>", () => {
   beforeEach(() => { enableWebAuthn() })

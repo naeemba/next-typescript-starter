@@ -13,9 +13,7 @@ import { styled, joinClassNames } from "../sign-in/styled.js"
 export interface PasskeyManagerClassNames {
   /** Wrapper `<div>` (both branches). Composes with the legacy `className` prop. */
   root?: string
-  /** The "add a passkey" `<button>`. */
   button?: string
-  /** The `<p>` rendered after a successful registration. */
   success?: string
   /** The `role="alert"` `<p>` rendered when registration fails. */
   error?: string
@@ -131,8 +129,7 @@ export function PasskeyManager(props: PasskeyManagerProps) {
         </p>
       )}
       {status === "error" && (
-        // role="alert" so the failure reason is announced when it appears —
-        // the paragraph is conditionally mounted, so assertive is safe here.
+        // Conditionally mounted, so an assertive role="alert" is safe here.
         <p role="alert" {...styled(classNames?.error, { color: "#b00", marginTop: 8, fontSize: 13 })}>
           {error}
         </p>

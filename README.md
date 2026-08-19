@@ -438,7 +438,7 @@ When a `classNames.X` key is set, the corresponding inline-style default is drop
 
 Form keys: `root`, `googleButton`, `passkeyButton`, `divider`, `dividerLine`, `dividerLabel`, `emailLabel`, `emailInput`, `submitButton`, `error`, `sentMessage`. Page adds: `main`, `heading`, `description`.
 
-`<PasskeyManager/>` takes the same `classNames` prop with keys `root`, `button`, `success`, `error`. Its error paragraph renders with `role="alert"` so screen readers announce a failed registration.
+`<PasskeyManager/>` takes the same `classNames` prop with keys `root`, `button`, `success`, `error`. Every error paragraph in the package renders with `role="alert"` so screen readers announce a failed action.
 
 For complete control, the shipped page is intentionally minimal — copy `app/sign-in/page.tsx` and call `authClient.signIn.magicLink` / `social` / `passkey` directly.
 
