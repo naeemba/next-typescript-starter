@@ -2,6 +2,24 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react"
 import { useWebAuthnSupported, type PasskeyAuthClient } from "../../client/index.js"
+import { styled, joinClassNames } from "../sign-in/styled.js"
+
+/**
+ * Per-element className overrides, same contract as `SignInFormClassNames`:
+ * a provided key suppresses that element's inline-style default so your
+ * CSS / Tailwind layer becomes the single source of truth; unset keys keep
+ * the built-in inline defaults.
+ */
+export interface PasskeyManagerClassNames {
+  /** Wrapper `<div>` (both branches). Composes with the legacy `className` prop. */
+  root?: string
+  /** The "add a passkey" `<button>`. */
+  button?: string
+  /** The `<p>` rendered after a successful registration. */
+  success?: string
+  /** The `role="alert"` `<p>` rendered when registration fails. */
+  error?: string
+}
 
 export interface PasskeyManagerProps {
   /**
@@ -13,7 +31,10 @@ export interface PasskeyManagerProps {
    * otherwise the addPasskey call will return a 404 error.
    */
   authClient: PasskeyAuthClient
+  /** Legacy single-className for the wrapper `<div>`. Still composes with `classNames.root`. */
   className?: string
+  /** Per-element className overrides; replaces the inline-style default for any element you provide. */
+  classNames?: PasskeyManagerClassNames
   addLabel?: ReactNode
   /** Optional name to attach to the registered passkey (e.g. user-supplied label). */
   passkeyName?: string
@@ -34,6 +55,7 @@ export function PasskeyManager(props: PasskeyManagerProps) {
   const {
     authClient,
     className,
+    classNames,
     addLabel = "Add a passkey",
     passkeyName,
     onAdded,
@@ -85,22 +107,35 @@ export function PasskeyManager(props: PasskeyManagerProps) {
     }
   }
 
+  const rootClassName = joinClassNames(className, classNames?.root)
+
   if (!isSupported) {
-    return unsupportedCopy ? <div className={className}>{unsupportedCopy}</div> : null
+    return unsupportedCopy ? <div className={rootClassName}>{unsupportedCopy}</div> : null
   }
 
   const disabled = status === "adding" || status === "added"
 
   return (
-    <div className={className}>
-      <button type="button" onClick={onAdd} disabled={disabled} style={{ padding: "8px 12px" }}>
+    <div className={rootClassName}>
+      <button
+        type="button"
+        onClick={onAdd}
+        disabled={disabled}
+        {...styled(classNames?.button, { padding: "8px 12px" })}
+      >
         {status === "adding" ? "Adding…" : addLabel}
       </button>
       {status === "added" && (
-        <p style={{ color: "#080", marginTop: 8, fontSize: 13 }}>{successCopy}</p>
+        <p {...styled(classNames?.success, { color: "#080", marginTop: 8, fontSize: 13 })}>
+          {successCopy}
+        </p>
       )}
       {status === "error" && (
-        <p style={{ color: "#b00", marginTop: 8, fontSize: 13 }}>{error}</p>
+        // role="alert" so the failure reason is announced when it appears —
+        // the paragraph is conditionally mounted, so assertive is safe here.
+        <p role="alert" {...styled(classNames?.error, { color: "#b00", marginTop: 8, fontSize: 13 })}>
+          {error}
+        </p>
       )}
     </div>
   )
