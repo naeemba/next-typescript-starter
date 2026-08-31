@@ -28,9 +28,31 @@ Set `issuer` on those rows yourself, then re-run. See better-auth's
 for the value each provider expects.
 
 **If you are still on the pre-0.8.0 baseline path**, `baselineAuth` now records
-only the migrations your database already has. It stops before `0001` and lets
-the following `migrateAuth` apply it for real, so the column is not silently
-skipped.
+only the migrations your database already has, and it checks a migration's
+whole effect — the column, its `NOT NULL`, and its index — not just that the
+column name exists. It stops before `0001` and lets the following
+`migrateAuth` apply it for real, so the column is not silently skipped.
+
+If you already ran part of `0001` by hand — most likely
+`ALTER TABLE account ADD COLUMN issuer text` from better-auth's own guide,
+without the unique index — `baseline` refuses and names what is missing:
+
+```
+ERROR: Refusing to baseline: migration 1 is only partly applied to this database.
+  Missing: index "account_issuer_account_id_idx".
+```
+
+It refuses because neither command can rescue that state on its own: recording
+`0001` would leave the index missing for good (and two Google accounts free to
+share one `(issuer, account_id)`, so one identity resolves to two users), while
+`migrate` would fail on its first statement re-adding a column that is already
+there. Finish the missing half by hand, then re-run `next-starter migrate baseline`:
+
+```sql
+CREATE UNIQUE INDEX "account_issuer_account_id_idx"
+  ON "account" USING btree ("issuer", "account_id");
+ALTER TABLE "account" ALTER COLUMN "issuer" SET NOT NULL;
+```
 
 ### `@better-auth/passkey` peer is now `>=1.7.0`
 

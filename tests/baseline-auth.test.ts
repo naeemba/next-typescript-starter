@@ -1,10 +1,15 @@
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest"
-import { readFileSync } from "node:fs"
-import { join } from "node:path"
 import { drizzle } from "drizzle-orm/postgres-js"
+import { readMigrationFiles } from "drizzle-orm/migrator"
 import { sql } from "drizzle-orm"
 import postgres from "postgres"
-import { baselineAuth, migrateAuth, AUTH_MIGRATIONS_TABLE } from "../src/db/migrate.js"
+import {
+  baselineAuth,
+  migrateAuth,
+  resolveMigrationsFolder,
+  AUTH_MIGRATIONS_TABLE,
+  BASELINE_EFFECT_CHECKS,
+} from "../src/db/migrate.js"
 import * as schema from "../src/schema/index.js"
 
 // Both suites here take exclusive ownership of the auth tables, so they share
@@ -12,25 +17,58 @@ import * as schema from "../src/schema/index.js"
 const url = process.env.DATABASE_URL
 const d = url ? describe : describe.skip
 
-const migrationsDir = join(import.meta.dirname, "..", "migrations")
+// The same read `baselineAuth` and the real migrator make, so these tests
+// follow drizzle's journal order instead of hardcoding its random filenames.
+const migrations = readMigrationFiles({ migrationsFolder: resolveMigrationsFolder() })
 
 type Database = ReturnType<typeof drizzle<typeof schema>>
 
+let client: ReturnType<typeof postgres>
+let db: Database
+
+beforeAll(() => {
+  if (!url) return
+  client = postgres(url, { max: 1 })
+  db = drizzle(client, { schema })
+})
+
+afterAll(async () => {
+  await client?.end({ timeout: 5 })
+})
+
 /** Back to nothing: no auth tables, no journal. */
-async function dropAuth(db: Database): Promise<void> {
-  await db.execute(sql`DROP SCHEMA IF EXISTS drizzle CASCADE`)
-  await db.execute(
+async function dropAuth(database: Database): Promise<void> {
+  await database.execute(sql`DROP SCHEMA IF EXISTS drizzle CASCADE`)
+  await database.execute(
     sql`DROP TABLE IF EXISTS "passkey","verification","account","session","user" CASCADE`,
   )
 }
 
-d("baselineAuth (integration)", () => {
-  let client: ReturnType<typeof postgres>
-  let db: Database
+async function hasIssuerColumn(): Promise<boolean> {
+  const columns = await db.execute(sql`
+    SELECT 1 FROM information_schema.columns
+     WHERE table_schema = 'public' AND table_name = 'account'
+       AND column_name = 'issuer'
+  `)
+  return (columns as unknown as unknown[]).length > 0
+}
 
+// A migration with no entry in the map is baselined blind — recorded as
+// already-applied without anything proving its DDL ever ran. That is the exact
+// bug this suite exists for, so a new migration without a check fails here
+// rather than in a consumer's production. 0000 needs none: baselineAuth's
+// canonical-table probe already proves it ran.
+describe("BASELINE_EFFECT_CHECKS", () => {
+  it("accounts for every shipped migration after 0000", () => {
+    const checked = Object.keys(BASELINE_EFFECT_CHECKS)
+      .map(Number)
+      .sort((a, b) => a - b)
+    expect(checked).toEqual(migrations.map((_, index) => index).slice(1))
+  })
+})
+
+d("baselineAuth (integration)", () => {
   beforeAll(async () => {
-    client = postgres(url!, { max: 1 })
-    db = drizzle(client, { schema })
     // Simulate an app that already created the auth tables the OLD way and
     // has NO package journal yet.
     await dropAuth(db)
@@ -39,13 +77,10 @@ d("baselineAuth (integration)", () => {
     await db.execute(sql`DROP SCHEMA IF EXISTS drizzle CASCADE`)
   })
 
-  afterAll(async () => {
-    await client.end({ timeout: 5 })
-  })
-
   it("records all shipped migrations without re-running DDL", async () => {
     const result = await baselineAuth(db)
-    expect(result.inserted).toBeGreaterThan(0)
+    expect(result.inserted).toBe(migrations.length)
+    expect(result.pending).toBe(0)
     const rows = await db.execute(
       sql.raw(`SELECT count(*)::int AS n FROM "drizzle"."${AUTH_MIGRATIONS_TABLE}"`),
     )
@@ -56,7 +91,7 @@ d("baselineAuth (integration)", () => {
   it("is idempotent — a second baseline inserts nothing", async () => {
     const result = await baselineAuth(db)
     expect(result.inserted).toBe(0)
-    expect(result.skipped).toBeGreaterThan(0)
+    expect(result.skipped).toBe(migrations.length)
   })
 
   it("leaves migrateAuth as a clean no-op afterward", async () => {
@@ -76,48 +111,68 @@ d("baselineAuth (integration)", () => {
   // never ran, and the miss would only show up as a failed sign-in.
   it("stops baselining at a migration the database does not already have", async () => {
     await db.execute(sql`DROP SCHEMA IF EXISTS drizzle CASCADE`)
-    await db.execute(sql`ALTER TABLE "account" DROP COLUMN IF EXISTS "issuer"`)
+    await db.execute(sql`ALTER TABLE "account" DROP COLUMN IF EXISTS "issuer" CASCADE`)
 
     const result = await baselineAuth(db)
     expect(result.inserted).toBe(1) // 0000 only; 0001 adds the missing column
+    expect(result.pending).toBe(migrations.length - 1)
 
     await migrateAuth(db)
-    const cols = await db.execute(sql`
-      SELECT 1 FROM information_schema.columns
-       WHERE table_schema = 'public' AND table_name = 'account'
-         AND column_name = 'issuer'
+    expect(await hasIssuerColumn()).toBe(true)
+  })
+
+  // An operator who followed better-auth's own upgrade guide and ran
+  // `ALTER TABLE account ADD COLUMN issuer text` by hand has the column but not
+  // the unique index. Recording 0001 there would leave two Google accounts free
+  // to share one (issuer, account_id) — one identity, two users — and plain
+  // `migrate` cannot rescue it either: its first statement re-adds a column
+  // that is already there. So refuse, and name what is missing.
+  it("refuses when the column exists but the migration's index does not", async () => {
+    await db.execute(sql`DROP SCHEMA IF EXISTS drizzle CASCADE`)
+    await db.execute(sql`DROP INDEX IF EXISTS "account_issuer_account_id_idx"`)
+
+    await expect(baselineAuth(db)).rejects.toThrow(
+      /only partly applied.*account_issuer_account_id_idx/s,
+    )
+    // 0001 was not recorded, so creating the index by hand and re-running
+    // finishes the baseline — the operator is not left stuck.
+    await db.execute(sql`
+      CREATE UNIQUE INDEX "account_issuer_account_id_idx"
+        ON "account" ("issuer", "account_id")
     `)
-    expect((cols as unknown as unknown[]).length).toBe(1)
+    const result = await baselineAuth(db)
+    expect(result.inserted + result.skipped).toBe(migrations.length)
+    expect(result.pending).toBe(0)
+
+    // Leave the database whole for whoever runs next.
+    await dropAuth(db)
+    await migrateAuth(db)
   })
 })
 
-/** Drizzle wraps driver errors; the Postgres message is one level down. */
+/** Drizzle wraps driver errors and a transaction wraps them again; the Postgres
+ *  message can sit at any depth, so match against the whole chain. */
 function causeMessage(err: unknown): string {
-  const cause = (err as { cause?: unknown }).cause
-  return String((cause as { message?: string })?.message ?? (err as Error).message)
-}
-
-function statements(file: string): string[] {
-  return readFileSync(join(migrationsDir, file), "utf8")
-    .split("--> statement-breakpoint")
-    .map((s) => s.trim())
-    .filter(Boolean)
+  const messages: string[] = []
+  let current: unknown = err
+  while (current && messages.length < 10) {
+    messages.push(String((current as Error).message ?? ""))
+    current = (current as { cause?: unknown }).cause
+  }
+  return messages.join("\n")
 }
 
 d("account.issuer backfill (integration)", () => {
-  let client: ReturnType<typeof postgres>
-  let db: Database
-
-  const run = async (file: string) => {
-    for (const statement of statements(file)) {
-      await db.execute(sql.raw(statement))
-    }
-  }
-
-  beforeAll(() => {
-    client = postgres(url!, { max: 1 })
-    db = drizzle(client, { schema })
-  })
+  // The real migrator wraps a migration's statements in one transaction
+  // (`PgDialect.migrate` → `session.transaction`), so a failure rolls the whole
+  // thing back. Running them the same way here is what lets the failure tests
+  // assert what an operator actually ends up with.
+  const run = (index: number) =>
+    db.transaction(async (tx) => {
+      for (const statement of migrations[index]!.sql) {
+        await tx.execute(sql.raw(statement))
+      }
+    })
 
   // Every test here starts from the pre-1.7 schema, and the last one leaves a
   // failed migration behind: tables present, journal gone. Hand the database
@@ -126,13 +181,12 @@ d("account.issuer backfill (integration)", () => {
   afterAll(async () => {
     await dropAuth(db)
     await migrateAuth(db)
-    await client.end({ timeout: 5 })
   })
 
   // Start from the pre-1.7 schema every time: 0000 only, no issuer column.
   beforeEach(async () => {
     await dropAuth(db)
-    await run("0000_magenta_old_lace.sql")
+    await run(0)
     await db.execute(sql`INSERT INTO "user" (id, email) VALUES ('u1', 'a@example.com')`)
   })
 
@@ -142,7 +196,7 @@ d("account.issuer backfill (integration)", () => {
       VALUES ('a1', 'u1', 'google-subject-1', 'google')
     `)
 
-    await run("0001_brave_black_crow.sql")
+    await run(1)
 
     const rows = await db.execute(sql`SELECT issuer FROM "account" WHERE id = 'a1'`)
     expect((rows as unknown as { issuer: string }[])[0]?.issuer).toBe(
@@ -151,7 +205,7 @@ d("account.issuer backfill (integration)", () => {
   })
 
   it("applies cleanly to a database with no account rows", async () => {
-    await expect(run("0001_brave_black_crow.sql")).resolves.toBeUndefined()
+    await expect(run(1)).resolves.toBeUndefined()
   })
 
   it("refuses to guess an issuer for a provider it did not create", async () => {
@@ -160,10 +214,12 @@ d("account.issuer backfill (integration)", () => {
       VALUES ('a1', 'u1', 'github-1', 'github')
     `)
 
-    // Drizzle wraps the driver error, so the provider name is on the cause.
-    await expect(run("0001_brave_black_crow.sql").catch(causeMessage)).resolves.toMatch(
+    await expect(run(1).catch(causeMessage)).resolves.toMatch(
       /Cannot backfill account\.issuer for provider_id\(s\): github/,
     )
+    // The whole migration rolls back, so the operator is left on the schema
+    // they started from rather than half-migrated.
+    expect(await hasIssuerColumn()).toBe(false)
   })
 
   it("rejects two accounts sharing one (issuer, accountId)", async () => {
@@ -174,8 +230,9 @@ d("account.issuer backfill (integration)", () => {
         ('a2', 'u2', 'google-subject-1', 'google')
     `)
 
-    await expect(run("0001_brave_black_crow.sql").catch(causeMessage)).resolves.toMatch(
+    await expect(run(1).catch(causeMessage)).resolves.toMatch(
       /account_issuer_account_id_idx/,
     )
+    expect(await hasIssuerColumn()).toBe(false)
   })
 })
