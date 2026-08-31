@@ -15,7 +15,7 @@ import * as schema from "../src/schema/index.js"
 // Both suites here take exclusive ownership of the auth tables, so they share
 // one file: vitest runs files in parallel but the tests inside one in order.
 const url = process.env.DATABASE_URL
-const d = url ? describe : describe.skip
+const describeWithDatabase = url ? describe : describe.skip
 
 // The same read `baselineAuth` and the real migrator make, so these tests
 // follow drizzle's journal order instead of hardcoding its random filenames.
@@ -67,7 +67,7 @@ describe("BASELINE_EFFECT_CHECKS", () => {
   })
 })
 
-d("baselineAuth (integration)", () => {
+describeWithDatabase("baselineAuth (integration)", () => {
   beforeAll(async () => {
     // Simulate an app that already created the auth tables the OLD way and
     // has NO package journal yet.
@@ -122,20 +122,24 @@ d("baselineAuth (integration)", () => {
   })
 
   // An operator who followed better-auth's own upgrade guide and ran
-  // `ALTER TABLE account ADD COLUMN issuer text` by hand has the column but not
-  // the unique index. Recording 0001 there would leave two Google accounts free
-  // to share one (issuer, account_id) — one identity, two users — and plain
-  // `migrate` cannot rescue it either: its first statement re-adds a column
-  // that is already there. So refuse, and name what is missing.
-  it("refuses when the column exists but the migration's index does not", async () => {
+  // `ALTER TABLE account ADD COLUMN issuer text` by hand has the column, but it
+  // is nullable and there is no unique index — so BOTH halves of 0001 are still
+  // missing. Recording it there would leave two Google accounts free to share
+  // one (issuer, account_id) — one identity, two users — and plain `migrate`
+  // cannot rescue it either: its first statement re-adds a column that is
+  // already there. So refuse, and name every part that is absent.
+  it("refuses when the column exists but its NOT NULL and index do not", async () => {
     await db.execute(sql`DROP SCHEMA IF EXISTS drizzle CASCADE`)
+    await db.execute(sql`ALTER TABLE "account" ALTER COLUMN "issuer" DROP NOT NULL`)
     await db.execute(sql`DROP INDEX IF EXISTS "account_issuer_account_id_idx"`)
 
     await expect(baselineAuth(db)).rejects.toThrow(
-      /only partly applied.*account_issuer_account_id_idx/s,
+      /only partly applied.*NOT NULL.*account_issuer_account_id_idx/s,
     )
-    // 0001 was not recorded, so creating the index by hand and re-running
-    // finishes the baseline — the operator is not left stuck.
+    // 0001 was not recorded, so finishing both halves by hand and re-running
+    // completes the baseline — the operator is not left stuck. Same order as
+    // UPGRADING.md and 0001 itself: tighten, then index.
+    await db.execute(sql`ALTER TABLE "account" ALTER COLUMN "issuer" SET NOT NULL`)
     await db.execute(sql`
       CREATE UNIQUE INDEX "account_issuer_account_id_idx"
         ON "account" ("issuer", "account_id")
@@ -162,7 +166,7 @@ function causeMessage(err: unknown): string {
   return messages.join("\n")
 }
 
-d("account.issuer backfill (integration)", () => {
+describeWithDatabase("account.issuer backfill (integration)", () => {
   // The real migrator wraps a migration's statements in one transaction
   // (`PgDialect.migrate` → `session.transaction`), so a failure rolls the whole
   // thing back. Running them the same way here is what lets the failure tests

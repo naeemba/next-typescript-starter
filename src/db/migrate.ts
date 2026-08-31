@@ -212,7 +212,7 @@ export async function baselineAuth(
   let inserted = 0
   let skipped = 0
   let pending = 0
-  for (const [index, m] of migrations.entries()) {
+  for (const [index, migration] of migrations.entries()) {
     const check = BASELINE_EFFECT_CHECKS[index]
     if (check) {
       const { columnAbsent, missing } = await missingEffect(db, check)
@@ -244,7 +244,7 @@ export async function baselineAuth(
     const alreadyRecorded = await exists(
       db,
       sql.raw(
-        `SELECT 1 FROM "drizzle"."${AUTH_MIGRATIONS_TABLE}" WHERE hash = '${m.hash}' LIMIT 1`,
+        `SELECT 1 FROM "drizzle"."${AUTH_MIGRATIONS_TABLE}" WHERE hash = '${migration.hash}' LIMIT 1`,
       ),
     )
     if (alreadyRecorded) {
@@ -254,7 +254,7 @@ export async function baselineAuth(
     await db.execute(
       sql.raw(
         `INSERT INTO "drizzle"."${AUTH_MIGRATIONS_TABLE}" (hash, created_at) ` +
-          `VALUES ('${m.hash}', ${m.folderMillis})`,
+          `VALUES ('${migration.hash}', ${migration.folderMillis})`,
       ),
     )
     inserted++

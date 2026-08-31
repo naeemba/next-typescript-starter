@@ -34,24 +34,34 @@ column name exists. It stops before `0001` and lets the following
 `migrateAuth` apply it for real, so the column is not silently skipped.
 
 If you already ran part of `0001` by hand — most likely
-`ALTER TABLE account ADD COLUMN issuer text` from better-auth's own guide,
-without the unique index — `baseline` refuses and names what is missing:
+`ALTER TABLE account ADD COLUMN issuer text` from better-auth's own guide —
+`baseline` refuses and names what is missing. That statement adds the column
+nullable and creates no index, so both halves are absent:
 
 ```
 ERROR: Refusing to baseline: migration 1 is only partly applied to this database.
-  Missing: index "account_issuer_account_id_idx".
+  Missing: NOT NULL on "account"."issuer", index "account_issuer_account_id_idx".
 ```
 
 It refuses because neither command can rescue that state on its own: recording
 `0001` would leave the index missing for good (and two Google accounts free to
 share one `(issuer, account_id)`, so one identity resolves to two users), while
 `migrate` would fail on its first statement re-adding a column that is already
-there. Finish the missing half by hand, then re-run `next-starter migrate baseline`:
+there. Finish the missing half by hand — in `0001`'s own order, backfill first,
+because `SET NOT NULL` fails on any table whose rows still have `issuer IS
+NULL` — then re-run `next-starter migrate baseline`:
 
 ```sql
+UPDATE "account" SET "issuer" = 'https://accounts.google.com'
+ WHERE "provider_id" = 'google' AND "issuer" IS NULL;
+
+-- Any other provider_id needs its issuer set by hand first, the same rule the
+-- "If you added your own providers" section above spells out.
+
+ALTER TABLE "account" ALTER COLUMN "issuer" SET NOT NULL;
+
 CREATE UNIQUE INDEX "account_issuer_account_id_idx"
   ON "account" USING btree ("issuer", "account_id");
-ALTER TABLE "account" ALTER COLUMN "issuer" SET NOT NULL;
 ```
 
 ### `@better-auth/passkey` peer is now `>=1.7.0`
