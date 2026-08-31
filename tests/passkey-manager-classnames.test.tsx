@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { render, screen, fireEvent, waitFor, cleanup } from "@testing-library/react"
 import { PasskeyManager } from "../src/pages/passkey-manager/index.js"
-import { makeClient } from "./helpers/passkey-client.js"
+import { makePasskeyAuthClient } from "./helpers/passkey-client.js"
 import { enableWebAuthn, disableWebAuthn } from "./helpers/webauthn.js"
 
 afterEach(() => cleanup())
@@ -17,7 +17,7 @@ describe("<PasskeyManager/> classNames overrides", () => {
   it("composes legacy className with classNames.root on the wrapper div", async () => {
     render(
       <PasskeyManager
-        authClient={makeClient()}
+        authClient={makePasskeyAuthClient()}
         className="legacy-class"
         classNames={{ root: "modern-class" }}
       />,
@@ -32,7 +32,7 @@ describe("<PasskeyManager/> classNames overrides", () => {
     disableWebAuthn()
     const { container } = render(
       <PasskeyManager
-        authClient={makeClient()}
+        authClient={makePasskeyAuthClient()}
         classNames={{ root: "modern-class" }}
         unsupportedCopy="Not supported"
       />,
@@ -43,14 +43,14 @@ describe("<PasskeyManager/> classNames overrides", () => {
   })
 
   it("classNames.button replaces the inline style on the add button", async () => {
-    render(<PasskeyManager authClient={makeClient()} classNames={{ button: "my-button" }} />)
+    render(<PasskeyManager authClient={makePasskeyAuthClient()} classNames={{ button: "my-button" }} />)
     const button = await screen.findByRole("button", { name: /add a passkey/i })
     expect(button.className).toBe("my-button")
     expect(button.getAttribute("style")).toBeNull()
   })
 
   it("classNames.success replaces the inline style on the success paragraph", async () => {
-    render(<PasskeyManager authClient={makeClient()} classNames={{ success: "my-success" }} />)
+    render(<PasskeyManager authClient={makePasskeyAuthClient()} classNames={{ success: "my-success" }} />)
     fireEvent.click(await screen.findByRole("button", { name: /add a passkey/i }))
     await waitFor(() => expect(screen.queryByText(/passkey added/i)).not.toBeNull())
     const paragraph = screen.getByText(/passkey added/i)
@@ -61,7 +61,7 @@ describe("<PasskeyManager/> classNames overrides", () => {
   it("classNames.error replaces the inline style on the error paragraph, which is a role=alert", async () => {
     const addPasskey = vi.fn(async () => ({ error: { message: "user cancelled" } }))
     render(
-      <PasskeyManager authClient={makeClient({ addPasskey })} classNames={{ error: "my-error" }} />,
+      <PasskeyManager authClient={makePasskeyAuthClient({ addPasskey })} classNames={{ error: "my-error" }} />,
     )
     fireEvent.click(await screen.findByRole("button", { name: /add a passkey/i }))
     const paragraph = await screen.findByRole("alert")
@@ -71,7 +71,7 @@ describe("<PasskeyManager/> classNames overrides", () => {
   })
 
   it("keeps the inline-style defaults on button and success paragraph when classNames is absent", async () => {
-    render(<PasskeyManager authClient={makeClient()} />)
+    render(<PasskeyManager authClient={makePasskeyAuthClient()} />)
     const button = await screen.findByRole("button", { name: /add a passkey/i })
     expect(button.getAttribute("style")).toContain("padding")
     fireEvent.click(button)
@@ -81,7 +81,7 @@ describe("<PasskeyManager/> classNames overrides", () => {
 
   it("keeps the inline-style default on the error paragraph when classNames is absent", async () => {
     const addPasskey = vi.fn(async () => ({ error: { message: "user cancelled" } }))
-    render(<PasskeyManager authClient={makeClient({ addPasskey })} />)
+    render(<PasskeyManager authClient={makePasskeyAuthClient({ addPasskey })} />)
     fireEvent.click(await screen.findByRole("button", { name: /add a passkey/i }))
     const paragraph = await screen.findByRole("alert")
     expect(paragraph.getAttribute("style")).toContain("color")

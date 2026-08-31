@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
 import { StrictMode } from "react"
 import { render, screen, fireEvent, waitFor, cleanup, act } from "@testing-library/react"
 import { PasskeyManager } from "../src/pages/passkey-manager/index.js"
-import { makeClient } from "./helpers/passkey-client.js"
+import { makePasskeyAuthClient } from "./helpers/passkey-client.js"
 import { enableWebAuthn, disableWebAuthn } from "./helpers/webauthn.js"
 
 afterEach(() => cleanup())
@@ -13,14 +13,14 @@ describe("<PasskeyManager/>", () => {
   afterEach(() => { disableWebAuthn() })
 
   it("renders the default 'Add a passkey' button when WebAuthn is supported", async () => {
-    render(<PasskeyManager authClient={makeClient()} />)
+    render(<PasskeyManager authClient={makePasskeyAuthClient()} />)
     expect(await screen.findByRole("button", { name: /add a passkey/i })).toBeTruthy()
   })
 
   it("renders the unsupportedCopy wrapped in a div when WebAuthn is unavailable and copy is provided", () => {
     disableWebAuthn()
     const { container } = render(
-      <PasskeyManager authClient={makeClient()} unsupportedCopy="Not supported" />,
+      <PasskeyManager authClient={makePasskeyAuthClient()} unsupportedCopy="Not supported" />,
     )
     expect(screen.queryByRole("button", { name: /add a passkey/i })).toBeNull()
     expect(container.textContent).toContain("Not supported")
@@ -31,34 +31,34 @@ describe("<PasskeyManager/>", () => {
   // on settings pages that stack PasskeyManager alongside other rows.
   it("renders nothing at all when WebAuthn is unavailable and no unsupportedCopy is provided", () => {
     disableWebAuthn()
-    const { container } = render(<PasskeyManager authClient={makeClient()} />)
+    const { container } = render(<PasskeyManager authClient={makePasskeyAuthClient()} />)
     expect(container.firstChild).toBeNull()
   })
 
   it("calls passkey.addPasskey() on click", async () => {
     const addPasskey = vi.fn(async () => ({ data: { id: "p1" }, error: null }))
-    render(<PasskeyManager authClient={makeClient({ addPasskey })} />)
+    render(<PasskeyManager authClient={makePasskeyAuthClient({ addPasskey })} />)
     fireEvent.click(await screen.findByRole("button", { name: /add a passkey/i }))
     await waitFor(() => expect(addPasskey).toHaveBeenCalled())
   })
 
   it("passes passkeyName as the name argument when provided", async () => {
     const addPasskey = vi.fn(async () => ({ data: { id: "p1" }, error: null }))
-    render(<PasskeyManager authClient={makeClient({ addPasskey })} passkeyName="My MacBook" />)
+    render(<PasskeyManager authClient={makePasskeyAuthClient({ addPasskey })} passkeyName="My MacBook" />)
     fireEvent.click(await screen.findByRole("button", { name: /add a passkey/i }))
     await waitFor(() => expect(addPasskey).toHaveBeenCalledWith({ name: "My MacBook" }))
   })
 
-  it("shows the success copy on successful add and fires onAdded", async () => {
+  it("shows the success copy as a role=status paragraph and fires onAdded", async () => {
     const onAdded = vi.fn()
-    render(<PasskeyManager authClient={makeClient()} onAdded={onAdded} />)
+    render(<PasskeyManager authClient={makePasskeyAuthClient()} onAdded={onAdded} />)
     fireEvent.click(await screen.findByRole("button", { name: /add a passkey/i }))
-    await waitFor(() => expect(screen.queryByText(/passkey added/i)).not.toBeNull())
+    expect((await screen.findByRole("status")).textContent).toMatch(/passkey added/i)
     expect(onAdded).toHaveBeenCalled()
   })
 
   it("disables the button after a successful add to prevent double-registration", async () => {
-    render(<PasskeyManager authClient={makeClient()} />)
+    render(<PasskeyManager authClient={makePasskeyAuthClient()} />)
     const button = (await screen.findByRole("button", { name: /add a passkey/i })) as HTMLButtonElement
     fireEvent.click(button)
     await waitFor(() => expect(screen.queryByText(/passkey added/i)).not.toBeNull())
@@ -68,7 +68,7 @@ describe("<PasskeyManager/>", () => {
   it("re-enables the button after the success window so a user can register multiple keys", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     try {
-      render(<PasskeyManager authClient={makeClient()} />)
+      render(<PasskeyManager authClient={makePasskeyAuthClient()} />)
       const button = (await screen.findByRole("button", { name: /add a passkey/i })) as HTMLButtonElement
       fireEvent.click(button)
       await vi.waitFor(() => expect(screen.queryByText(/passkey added/i)).not.toBeNull())
@@ -89,7 +89,7 @@ describe("<PasskeyManager/>", () => {
     const onAdded = vi.fn()
     render(
       <StrictMode>
-        <PasskeyManager authClient={makeClient()} onAdded={onAdded} />
+        <PasskeyManager authClient={makePasskeyAuthClient()} onAdded={onAdded} />
       </StrictMode>
     )
     fireEvent.click(await screen.findByRole("button", { name: /add a passkey/i }))
@@ -98,13 +98,13 @@ describe("<PasskeyManager/>", () => {
 
   it("shows an inline error when addPasskey returns an error", async () => {
     const addPasskey = vi.fn(async () => ({ error: { message: "user cancelled" } }))
-    render(<PasskeyManager authClient={makeClient({ addPasskey })} />)
+    render(<PasskeyManager authClient={makePasskeyAuthClient({ addPasskey })} />)
     fireEvent.click(await screen.findByRole("button", { name: /add a passkey/i }))
     await waitFor(() => expect(screen.queryByText(/user cancelled/i)).not.toBeNull())
   })
 
   it("accepts a custom addLabel", async () => {
-    render(<PasskeyManager authClient={makeClient()} addLabel="Register passkey" />)
+    render(<PasskeyManager authClient={makePasskeyAuthClient()} addLabel="Register passkey" />)
     expect(await screen.findByRole("button", { name: /register passkey/i })).toBeTruthy()
   })
 })

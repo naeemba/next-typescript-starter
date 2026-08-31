@@ -7,7 +7,7 @@ import {
   type SocialAuthClient,
   type PasskeyAuthClient,
 } from "../../client/index.js"
-import { styled, joinClassNames } from "./styled.js"
+import { styled, joinClassNames } from "../../internal/styled.js"
 
 /**
  * Structural type for the better-auth client methods SignInForm uses.
@@ -330,7 +330,7 @@ export function SignInForm(props: SignInFormProps) {
           // whole component. Early-returning unmounts the Google/passkey
           // buttons and drops any in-flight status updates from those
           // methods — defeating the per-method MethodStatus isolation.
-          <p className={classNames?.sentMessage}>{sentCopy(email)}</p>
+          <p role="status" className={classNames?.sentMessage}>{sentCopy(email)}</p>
         ) : (
           <form onSubmit={onMagicLinkSubmit}>
             <label

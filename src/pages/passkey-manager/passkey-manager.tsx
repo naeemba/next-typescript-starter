@@ -1,8 +1,8 @@
 "use client"
 
-import { useEffect, useRef, useState, type ReactNode } from "react"
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react"
 import { useWebAuthnSupported, type PasskeyAuthClient } from "../../client/index.js"
-import { styled, joinClassNames } from "../sign-in/styled.js"
+import { styled, joinClassNames } from "../../internal/styled.js"
 
 /**
  * Per-element className overrides, same contract as `SignInFormClassNames`:
@@ -14,6 +14,7 @@ export interface PasskeyManagerClassNames {
   /** Wrapper `<div>` (both branches). Composes with the legacy `className` prop. */
   root?: string
   button?: string
+  /** The `role="status"` `<p>` rendered after a successful registration. */
   success?: string
   /** The `role="alert"` `<p>` rendered when registration fails. */
   error?: string
@@ -113,6 +114,9 @@ export function PasskeyManager(props: PasskeyManagerProps) {
 
   const disabled = status === "adding" || status === "added"
 
+  const successStyle: CSSProperties = { color: "#080", marginTop: 8, fontSize: 13 }
+  const errorStyle: CSSProperties = { color: "#b00", marginTop: 8, fontSize: 13 }
+
   return (
     <div className={rootClassName}>
       <button
@@ -124,13 +128,15 @@ export function PasskeyManager(props: PasskeyManagerProps) {
         {status === "adding" ? "Adding…" : addLabel}
       </button>
       {status === "added" && (
-        <p {...styled(classNames?.success, { color: "#080", marginTop: 8, fontSize: 13 })}>
+        // Conditionally mounted, so the polite role="status" announces the
+        // confirmation instead of leaving the click silent.
+        <p role="status" {...styled(classNames?.success, successStyle)}>
           {successCopy}
         </p>
       )}
       {status === "error" && (
         // Conditionally mounted, so an assertive role="alert" is safe here.
-        <p role="alert" {...styled(classNames?.error, { color: "#b00", marginTop: 8, fontSize: 13 })}>
+        <p role="alert" {...styled(classNames?.error, errorStyle)}>
           {error}
         </p>
       )}

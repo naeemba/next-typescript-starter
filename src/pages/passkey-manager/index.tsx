@@ -5,7 +5,11 @@ export {
   type PasskeyManagerProps,
   type PasskeyManagerClassNames,
 } from "./passkey-manager.js"
-export { PasskeyManagerPage, type PasskeyManagerPageProps } from "./passkey-manager-page.js"
+export {
+  PasskeyManagerPage,
+  type PasskeyManagerPageProps,
+  type PasskeyManagerPageClassNames,
+} from "./passkey-manager-page.js"
 // Re-export PasskeyAuthClient so consumers can type the `authClient` prop
 // without reaching into the /client subpath — mirrors the sign-in barrel.
 export { type PasskeyAuthClient } from "../../client/index.js"

@@ -1,15 +1,30 @@
 "use client"
 
 import type { CSSProperties, ReactNode } from "react"
-import { PasskeyManager, type PasskeyManagerProps } from "./passkey-manager.js"
+import {
+  PasskeyManager,
+  type PasskeyManagerClassNames,
+  type PasskeyManagerProps,
+} from "./passkey-manager.js"
+import { styled } from "../../internal/styled.js"
 
-export interface PasskeyManagerPageProps extends PasskeyManagerProps {
+export interface PasskeyManagerPageClassNames extends PasskeyManagerClassNames {
+  /** Outer `<main>` wrapper. Suppresses the page's centering inline styles when set. */
+  main?: string
+  /** The `<h1>` title. */
+  heading?: string
+  /** The `<p>` description, when one is provided. */
+  description?: string
+}
+
+export interface PasskeyManagerPageProps extends Omit<PasskeyManagerProps, "classNames"> {
   title?: string
   /**
    * Body copy under the heading. Pass `null` to suppress entirely; omit to
    * use the default ("Add a passkey to sign in faster on this device.").
    */
   description?: ReactNode
+  classNames?: PasskeyManagerPageClassNames
 }
 
 // Parallel to SignInPage: a minimal `<main>` wrapper that gives consumers
@@ -21,6 +36,7 @@ export function PasskeyManagerPage(props: PasskeyManagerPageProps) {
   const {
     title = "Passkeys",
     description = "Add a passkey to sign in faster on this device.",
+    classNames,
     ...managerProps
   } = props
 
@@ -37,10 +53,10 @@ export function PasskeyManagerPage(props: PasskeyManagerPageProps) {
   const descriptionStyle: CSSProperties = { fontSize: 13, color: "#555", marginTop: 0, marginBottom: 12 }
 
   return (
-    <main style={mainStyle}>
-      <h1 style={headingStyle}>{title}</h1>
-      {hasDescription && <p style={descriptionStyle}>{description}</p>}
-      <PasskeyManager {...managerProps} />
+    <main {...styled(classNames?.main, mainStyle)}>
+      <h1 {...styled(classNames?.heading, headingStyle)}>{title}</h1>
+      {hasDescription && <p {...styled(classNames?.description, descriptionStyle)}>{description}</p>}
+      <PasskeyManager {...managerProps} classNames={classNames} />
     </main>
   )
 }

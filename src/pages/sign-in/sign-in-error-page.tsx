@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react"
-import { styled } from "./styled.js"
+import { styled } from "../../internal/styled.js"
 
 // Codes better-auth's magic-link plugin emits on the errorCallbackURL
 // redirect when the verify endpoint fails. Mapped to user-facing copy

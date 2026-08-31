@@ -66,7 +66,7 @@ describe("<SignInForm/> google prop", () => {
     const social = vi.fn(async () => ({ error: { message: "google denied" } }))
     render(<SignInForm authClient={makeClient({ social })} google onSignedIn={onSignedIn} />)
     fireEvent.click(screen.getByRole("button", { name: /continue with google/i }))
-    await waitFor(() => expect(screen.queryByText(/google denied/i)).not.toBeNull())
+    expect((await screen.findByRole("alert")).textContent).toMatch(/google denied/i)
     expect(onSignedIn).not.toHaveBeenCalled()
   })
 
@@ -74,7 +74,7 @@ describe("<SignInForm/> google prop", () => {
     const social = vi.fn(async () => ({ error: { message: "google denied" } }))
     render(<SignInForm authClient={makeClient({ social })} google />)
     fireEvent.click(screen.getByRole("button", { name: /continue with google/i }))
-    await waitFor(() => expect(screen.queryByText(/google denied/i)).not.toBeNull())
+    expect((await screen.findByRole("alert")).textContent).toMatch(/google denied/i)
   })
 
   it("accepts a custom label via google={{ label }}", () => {
@@ -117,7 +117,7 @@ describe("<SignInForm/> passkey prop", () => {
     const passkey = vi.fn(async () => ({ error: { message: "no creds" } }))
     render(<SignInForm authClient={makeClient({ passkey })} passkey onSignedIn={onSignedIn} />)
     fireEvent.click(await screen.findByRole("button", { name: /sign in with passkey/i }))
-    await waitFor(() => expect(screen.queryByText(/no creds/i)).not.toBeNull())
+    expect((await screen.findByRole("alert")).textContent).toMatch(/no creds/i)
     expect(onSignedIn).not.toHaveBeenCalled()
   })
 
@@ -125,7 +125,7 @@ describe("<SignInForm/> passkey prop", () => {
     const passkey = vi.fn(async () => ({ error: { message: "no creds" } }))
     render(<SignInForm authClient={makeClient({ passkey })} passkey />)
     fireEvent.click(await screen.findByRole("button", { name: /sign in with passkey/i }))
-    await waitFor(() => expect(screen.queryByText(/no creds/i)).not.toBeNull())
+    expect((await screen.findByRole("alert")).textContent).toMatch(/no creds/i)
   })
 
   // better-auth's signIn.passkey() doesn't redirect on its own (unlike social/OAuth).
