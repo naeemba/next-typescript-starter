@@ -12,18 +12,18 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
-    "@better-auth/passkey": "^1.6.26",
+    "@better-auth/passkey": "^1.7.2",
     "@naeemba/next-starter": "file:../..",
     "@react-email/components": "^1.0.12",
-    "@react-email/render": "^2.0.10",
-    "next": "^16.3.0",
+    "@react-email/render": "^2.1.0",
+    "next": "^16.3.3",
     "postgres": "^3.4.9",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },
   "devDependencies": {
     "@playwright/test": "^1.62.1",
-    "@types/node": "^26.2.0",
+    "@types/node": "^26.4.0",
     "@types/react": "^19.2.18",
     "typescript": "^6.0.3"
   }

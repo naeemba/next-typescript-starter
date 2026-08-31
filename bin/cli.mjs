@@ -34,8 +34,14 @@ async function runMigrate(rest) {
   try {
     const db = drizzle(client)
     if (baseline) {
-      const { inserted, skipped } = await baselineAuth(db)
+      const { inserted, skipped, pending } = await baselineAuth(db)
       stdout.write(`  baseline: recorded ${inserted} migration(s), ${skipped} already present\n`)
+      if (pending > 0) {
+        stdout.write(
+          `  stopped: ${pending} migration(s) still need their DDL — ` +
+            `run \`next-starter migrate\` now to apply them\n`,
+        )
+      }
     } else {
       await migrateAuth(db)
       stdout.write(`  auth migrations applied\n`)
