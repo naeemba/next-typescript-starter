@@ -2,6 +2,24 @@
 
 All notable changes to `@naeemba/next-starter`. Migration steps live in [UPGRADING.md](./UPGRADING.md).
 
+## [0.11.0](https://github.com/naeemba/next-typescript-starter/compare/v0.10.2...v0.11.0) (2026-08-31)
+
+### ⚠ BREAKING CHANGES
+
+* **schema:** the @better-auth/passkey peer range is now >=1.7.0, and
+existing databases need migration 0001. See UPGRADING.md.
+
+### Features
+
+* classNames overrides for PasskeyManager, and an error that announces itself ([081c46d](https://github.com/naeemba/next-typescript-starter/commit/081c46da2fdb5fe7b50d0e2aaa13cc128a80b022)), closes [#080](https://github.com/naeemba/next-typescript-starter/issues/080) [#b00](https://github.com/naeemba/next-typescript-starter/issues/b00)
+* **schema:** key accounts by issuer for better-auth 1.7 ([eb45d92](https://github.com/naeemba/next-typescript-starter/commit/eb45d9217477d79592c8d1d62d1f5d49f134db63))
+
+### Bug Fixes
+
+* **ci:** stop the auth integration tests from breaking the example migrate ([5baafe0](https://github.com/naeemba/next-typescript-starter/commit/5baafe002e07b97bec7bea4d09272065b9196c7e))
+* **migrate:** make the partial-0001 recovery path actually work ([fb8357f](https://github.com/naeemba/next-typescript-starter/commit/fb8357f442332160560657ac090daaf20e876272))
+* **migrate:** verify a migration's whole effect before baselining it ([9d881f4](https://github.com/naeemba/next-typescript-starter/commit/9d881f4576c4f4fd9144f137c52502c0443b8a26))
+* **pages:** page-level classNames, announced success, and a shared styled ([410ad16](https://github.com/naeemba/next-typescript-starter/commit/410ad1666b42d5bac32c089109f2b0be985e600e))
 ## [0.10.2](https://github.com/naeemba/next-typescript-starter/compare/v0.10.1...v0.10.2) (2026-08-10)
 
 ### Bug Fixes
