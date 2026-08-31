@@ -14,19 +14,26 @@ const d = url ? describe : describe.skip
 
 const migrationsDir = join(import.meta.dirname, "..", "migrations")
 
+type Database = ReturnType<typeof drizzle<typeof schema>>
+
+/** Back to nothing: no auth tables, no journal. */
+async function dropAuth(db: Database): Promise<void> {
+  await db.execute(sql`DROP SCHEMA IF EXISTS drizzle CASCADE`)
+  await db.execute(
+    sql`DROP TABLE IF EXISTS "passkey","verification","account","session","user" CASCADE`,
+  )
+}
+
 d("baselineAuth (integration)", () => {
   let client: ReturnType<typeof postgres>
-  let db: ReturnType<typeof drizzle<typeof schema>>
+  let db: Database
 
   beforeAll(async () => {
     client = postgres(url!, { max: 1 })
     db = drizzle(client, { schema })
     // Simulate an app that already created the auth tables the OLD way and
     // has NO package journal yet.
-    await db.execute(sql`DROP SCHEMA IF EXISTS drizzle CASCADE`)
-    await db.execute(sql.raw(
-      `DROP TABLE IF EXISTS "passkey","verification","account","session","user" CASCADE`,
-    ))
+    await dropAuth(db)
     await migrateAuth(db) // create tables + journal as a real fresh install would
     // Now wipe ONLY the journal to mimic a pre-0.8.0 app (tables exist, no journal).
     await db.execute(sql`DROP SCHEMA IF EXISTS drizzle CASCADE`)
@@ -58,10 +65,7 @@ d("baselineAuth (integration)", () => {
 
   it("refuses to baseline when the canonical auth table is absent", async () => {
     // Mimic a fresh/empty DB or a wrong DATABASE_URL: no auth tables, no journal.
-    await db.execute(sql`DROP SCHEMA IF EXISTS drizzle CASCADE`)
-    await db.execute(sql.raw(
-      `DROP TABLE IF EXISTS "passkey","verification","account","session","user" CASCADE`,
-    ))
+    await dropAuth(db)
     await expect(baselineAuth(db)).rejects.toThrow(/public\.user.*does not exist/s)
     // Recreate tables so the suite leaves the DB in a sane state.
     await migrateAuth(db)
@@ -102,7 +106,7 @@ function statements(file: string): string[] {
 
 d("account.issuer backfill (integration)", () => {
   let client: ReturnType<typeof postgres>
-  let db: ReturnType<typeof drizzle<typeof schema>>
+  let db: Database
 
   const run = async (file: string) => {
     for (const statement of statements(file)) {
@@ -115,16 +119,19 @@ d("account.issuer backfill (integration)", () => {
     db = drizzle(client, { schema })
   })
 
+  // Every test here starts from the pre-1.7 schema, and the last one leaves a
+  // failed migration behind: tables present, journal gone. Hand the database
+  // back fully migrated so whoever owns it next — a dev running the example
+  // after `npm test` — finds it the way a fresh install leaves it.
   afterAll(async () => {
+    await dropAuth(db)
+    await migrateAuth(db)
     await client.end({ timeout: 5 })
   })
 
   // Start from the pre-1.7 schema every time: 0000 only, no issuer column.
   beforeEach(async () => {
-    await db.execute(sql`DROP SCHEMA IF EXISTS drizzle CASCADE`)
-    await db.execute(
-      sql.raw(`DROP TABLE IF EXISTS "passkey","verification","account","session","user" CASCADE`),
-    )
+    await dropAuth(db)
     await run("0000_magenta_old_lace.sql")
     await db.execute(sql`INSERT INTO "user" (id, email) VALUES ('u1', 'a@example.com')`)
   })

@@ -57,11 +57,21 @@ jobs:
       - name: Typecheck (example)
         run: npm --workspace examples/basic run typecheck
 
+      # The package's integration tests own `starter_test` outright — they drop
+      # and recreate the auth tables. Give the example its own database so the
+      # two never have to agree on who leaves what behind.
+      - name: Create the example database
+        run: PGPASSWORD=postgres psql -h localhost -U postgres -c 'CREATE DATABASE example_e2e'
+
       - name: Apply auth migrations (package-owned track)
         run: npm --workspace examples/basic run db:migrate
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/example_e2e
 
       - name: Install Playwright browser
         run: npx --workspace examples/basic playwright install --with-deps chromium
 
       - name: E2E smoke test
         run: npm --workspace examples/basic run test:e2e
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/example_e2e
