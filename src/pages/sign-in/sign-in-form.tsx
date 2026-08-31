@@ -7,7 +7,7 @@ import {
   type SocialAuthClient,
   type PasskeyAuthClient,
 } from "../../client/index.js"
-import { styled, joinClassNames } from "./styled.js"
+import { styled, joinClassNames } from "../../internal/styled.js"
 
 /**
  * Structural type for the better-auth client methods SignInForm uses.
@@ -291,7 +291,7 @@ export function SignInForm(props: SignInFormProps) {
             {status.google === "sending" ? "Signing in…" : googleLabel}
           </button>
           {status.google === "error" && (
-            <p {...styled(classNames?.error, errorStyle)}>
+            <p role="alert" {...styled(classNames?.error, errorStyle)}>
               {errorCopy(errors.google)}
             </p>
           )}
@@ -309,7 +309,7 @@ export function SignInForm(props: SignInFormProps) {
             {status.passkey === "sending" ? "Signing in…" : passkeyLabel}
           </button>
           {status.passkey === "error" && (
-            <p {...styled(classNames?.error, errorStyle)}>
+            <p role="alert" {...styled(classNames?.error, errorStyle)}>
               {errorCopy(errors.passkey)}
             </p>
           )}
@@ -330,7 +330,7 @@ export function SignInForm(props: SignInFormProps) {
           // whole component. Early-returning unmounts the Google/passkey
           // buttons and drops any in-flight status updates from those
           // methods — defeating the per-method MethodStatus isolation.
-          <p className={classNames?.sentMessage}>{sentCopy(email)}</p>
+          <p role="status" className={classNames?.sentMessage}>{sentCopy(email)}</p>
         ) : (
           <form onSubmit={onMagicLinkSubmit}>
             <label
@@ -356,7 +356,7 @@ export function SignInForm(props: SignInFormProps) {
               {status.magicLink === "sending" ? "Sending…" : submitLabel}
             </button>
             {status.magicLink === "error" && (
-              <p {...styled(classNames?.error, magicLinkErrorStyle)}>
+              <p role="alert" {...styled(classNames?.error, magicLinkErrorStyle)}>
                 {errorCopy(errors.magicLink)}
               </p>
             )}

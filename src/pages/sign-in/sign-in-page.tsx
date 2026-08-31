@@ -2,7 +2,7 @@
 
 import type { CSSProperties, ReactNode } from "react"
 import { SignInForm, type SignInFormClassNames, type SignInFormProps } from "./sign-in-form.js"
-import { styled } from "./styled.js"
+import { styled } from "../../internal/styled.js"
 
 export interface SignInPageClassNames extends SignInFormClassNames {
   /** Outer `<main>` wrapper. Suppresses the page's centering inline styles when set. */

@@ -26,24 +26,22 @@ describe("<SignInForm/>", () => {
     expect(magicLink).toHaveBeenCalledWith({ email: "a@example.com", callbackURL: "/studio" })
   })
 
-  it("shows the sent state after a successful submit", async () => {
+  it("shows the sent state as a role=status paragraph after a successful submit", async () => {
     const magicLink = vi.fn(async () => ({ error: null }))
     render(<SignInForm authClient={makeAuthClient(magicLink)} />)
     fireEvent.change(screen.getByLabelText("Email"), { target: { value: "a@example.com" } })
     fireEvent.submit(screen.getByLabelText("Email").closest("form")!)
-    await waitFor(() => {
-      expect(screen.getByText(/We sent a sign-in link/i)).toBeDefined()
-    })
+    const sent = await screen.findByRole("status")
+    expect(sent.textContent).toMatch(/We sent a sign-in link/i)
   })
 
-  it("shows the error state when authClient returns an error", async () => {
+  it("shows the error state as a role=alert paragraph when authClient returns an error", async () => {
     const magicLink = vi.fn(async () => ({ error: { message: "boom" } }))
     render(<SignInForm authClient={makeAuthClient(magicLink)} />)
     fireEvent.change(screen.getByLabelText("Email"), { target: { value: "a@example.com" } })
     fireEvent.submit(screen.getByLabelText("Email").closest("form")!)
-    await waitFor(() => {
-      expect(screen.getByText(/boom/)).toBeDefined()
-    })
+    const alert = await screen.findByRole("alert")
+    expect(alert.textContent).toContain("boom")
   })
 
   it("calls onSent callback with the email", async () => {

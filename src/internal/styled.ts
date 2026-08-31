@@ -6,10 +6,10 @@ import type { CSSProperties } from "react"
 // short of `!important`, which is the exact mismatch the classNames prop
 // is meant to eliminate.
 //
-// Shared between sign-in-form.tsx and sign-in-page.tsx so a future change
-// to the swap contract (e.g. allowing className + a subset of the fallback
-// style) is made in one place — the diverging copy is the more dangerous
-// of the two failure modes.
+// Shared by every component with a classNames prop so a future change to the
+// swap contract (e.g. allowing className + a subset of the fallback style) is
+// made in one place — the diverging copy is the more dangerous of the two
+// failure modes.
 export function styled(
   className: string | undefined,
   fallback: CSSProperties,
