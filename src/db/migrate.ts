@@ -15,6 +15,35 @@ type Db = ReturnType<typeof drizzle<typeof schema>>
 export const AUTH_MIGRATIONS_TABLE = "__next_starter_migrations"
 
 /**
+ * Migrations that `baselineAuth` may only record as already-applied when the
+ * database can be shown to already have their effect. Keyed by position in the
+ * shipped journal, and each entry names one column the migration adds.
+ *
+ * Baseline exists for apps whose auth tables were created by the pre-0.8.0
+ * drizzle-kit path, so their schema matches migration 0000 and nothing after
+ * it. Recording a later migration for such a database would skip DDL that
+ * never ran — 0001 adds `account.issuer`, which better-auth >=1.7 filters on
+ * for every account lookup, so the miss would only show up as a failed
+ * sign-in. Baseline therefore stops at the first migration whose column is
+ * absent and lets `migrateAuth` apply that one for real.
+ */
+const BASELINE_COLUMN_CHECKS: Record<number, { table: string; column: string }> = {
+  1: { table: "account", column: "issuer" },
+}
+
+async function hasColumn(db: Db, table: string, column: string): Promise<boolean> {
+  const rows = await db.execute(sql`
+    SELECT 1
+      FROM information_schema.columns
+     WHERE table_schema = 'public'
+       AND table_name = ${table}
+       AND column_name = ${column}
+     LIMIT 1
+  `)
+  return (rows as unknown as unknown[]).length > 0
+}
+
+/**
  * Absolute path to the `migrations/` folder shipped in the package.
  *
  * Rather than relying on a fixed relative path (which differs between the
@@ -72,6 +101,10 @@ export async function migrateAuth(db: Db, opts: MigrateAuthOptions = {}): Promis
  *
  * Idempotent: rows whose hash is already present are left untouched.
  *
+ * Only migrations the database demonstrably already has are recorded. Baseline
+ * stops at the first migration listed in `BASELINE_COLUMN_CHECKS` whose column
+ * is missing, leaving it and everything after it for `migrateAuth` to apply.
+ *
  * Mirrors the drizzle postgres-js migrator's own bookkeeping: schema
  * `drizzle`, table `__next_starter_migrations(id serial pk, hash text,
  * created_at bigint)`, one row per migration with created_at = folderMillis.
@@ -120,7 +153,10 @@ export async function baselineAuth(
 
   let inserted = 0
   let skipped = 0
-  for (const m of migrations) {
+  for (const [index, m] of migrations.entries()) {
+    const check = BASELINE_COLUMN_CHECKS[index]
+    if (check && !(await hasColumn(db, check.table, check.column))) break
+
     const existing = await db.execute(
       sql.raw(
         `SELECT 1 FROM "drizzle"."${AUTH_MIGRATIONS_TABLE}" WHERE hash = '${m.hash}' LIMIT 1`,

@@ -29,6 +29,17 @@ describe("auth schema indexes", () => {
     expect(indexColumns(account, "account_user_id_idx")).toEqual(["user_id"])
   })
 
+  // better-auth >=1.7 looks an account up by (issuer, accountId) and relies on
+  // the pair being unique — two rows sharing it would let one identity resolve
+  // to two users.
+  it("ships a unique index on account.(issuer, accountId)", () => {
+    expect(indexNames(account)).toContain("account_issuer_account_id_idx")
+    expect(indexColumns(account, "account_issuer_account_id_idx")).toEqual([
+      "issuer",
+      "account_id",
+    ])
+  })
+
   it("ships an index on verification.identifier", () => {
     expect(indexNames(verification)).toContain("verification_identifier_idx")
     expect(indexColumns(verification, "verification_identifier_idx")).toEqual(["identifier"])

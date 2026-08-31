@@ -1,5 +1,42 @@
 # Upgrading
 
+## 0.10.x → 0.11.0
+
+### better-auth 1.7 — `account.issuer` (new migration, action required)
+
+better-auth 1.7 identifies an account by `(issuer, accountId)` instead of
+`(providerId, accountId)`. `issuer` is the identity authority: a provider's own
+OIDC issuer where it declares one, or a synthetic `local:`-namespaced value
+where it doesn't. Every account lookup filters on the new column, so a database
+without it fails sign-in with `column account.issuer does not exist`.
+
+Migration `0001` adds the column, backfills it, and creates the unique index on
+`(issuer, account_id)`. Run your usual `next-starter migrate` — nothing else to
+do if Google is the only social provider you use, which is all this package
+configures. Magic-link and passkey sign-ins create no `account` row, so they are
+unaffected.
+
+**If you added your own providers**, the migration stops and names them rather
+than guessing:
+
+```
+ERROR: Cannot backfill account.issuer for provider_id(s): github
+```
+
+Set `issuer` on those rows yourself, then re-run. See better-auth's
+[1.7 upgrade guide](https://better-auth.com/docs/guides/1-7-upgrade-guide#account-identity-is-scoped-by-issuer)
+for the value each provider expects.
+
+**If you are still on the pre-0.8.0 baseline path**, `baselineAuth` now records
+only the migrations your database already has. It stops before `0001` and lets
+the following `migrateAuth` apply it for real, so the column is not silently
+skipped.
+
+### `@better-auth/passkey` peer is now `>=1.7.0`
+
+The passkey plugin and better-auth share internals and must move together.
+Upgrade both.
+
 ## 0.9.x → 0.10.0
 
 ### Postal email provider (additive, non-breaking)

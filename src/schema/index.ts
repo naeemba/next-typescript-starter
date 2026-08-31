@@ -1,4 +1,12 @@
-import { pgTable, text, timestamp, boolean, integer, index } from "drizzle-orm/pg-core"
+import {
+  pgTable,
+  text,
+  timestamp,
+  boolean,
+  integer,
+  index,
+  uniqueIndex,
+} from "drizzle-orm/pg-core"
 
 export const user = pgTable("user", {
   id: text("id").primaryKey(),
@@ -39,6 +47,12 @@ export const account = pgTable(
     userId: text("user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
+    // better-auth >=1.7 keys an account on (issuer, accountId), not on
+    // providerId. `issuer` is the identity authority: the provider's own
+    // OIDC issuer where it declares one ("https://accounts.google.com"), or
+    // a synthetic "local:"-namespaced value where it doesn't. Every account
+    // lookup filters on it, so the column and its unique index are required.
+    issuer: text("issuer").notNull(),
     accountId: text("account_id").notNull(),
     providerId: text("provider_id").notNull(),
     accessToken: text("access_token"),
@@ -51,7 +65,10 @@ export const account = pgTable(
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
-  (t) => [index("account_user_id_idx").on(t.userId)],
+  (t) => [
+    index("account_user_id_idx").on(t.userId),
+    uniqueIndex("account_issuer_account_id_idx").on(t.issuer, t.accountId),
+  ],
 )
 
 export const verification = pgTable(
