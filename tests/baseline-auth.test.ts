@@ -132,13 +132,26 @@ describeWithDatabase("baselineAuth (integration)", () => {
     await db.execute(sql`DROP SCHEMA IF EXISTS drizzle CASCADE`)
     await db.execute(sql`ALTER TABLE "account" ALTER COLUMN "issuer" DROP NOT NULL`)
     await db.execute(sql`DROP INDEX IF EXISTS "account_issuer_account_id_idx"`)
+    // A real pre-1.7 app has rows, and hand-adding a nullable column leaves
+    // their issuer NULL — which is what makes the backfill below mandatory
+    // rather than decorative.
+    await db.execute(sql`INSERT INTO "user" (id, email) VALUES ('u1', 'a@example.com')`)
+    await db.execute(sql`
+      INSERT INTO "account" (id, user_id, account_id, provider_id)
+      VALUES ('a1', 'u1', 'google-subject-1', 'google')
+    `)
 
     await expect(baselineAuth(db)).rejects.toThrow(
       /only partly applied.*NOT NULL.*account_issuer_account_id_idx/s,
     )
-    // 0001 was not recorded, so finishing both halves by hand and re-running
-    // completes the baseline — the operator is not left stuck. Same order as
-    // UPGRADING.md and 0001 itself: tighten, then index.
+    // 0001 was not recorded, so finishing the missing parts by hand and
+    // re-running completes the baseline — the operator is not left stuck. Same
+    // order as UPGRADING.md and 0001 itself: backfill, tighten, then index.
+    // Drop the UPDATE and `SET NOT NULL` fails on the row inserted above.
+    await db.execute(sql`
+      UPDATE "account" SET "issuer" = 'https://accounts.google.com'
+       WHERE "provider_id" = 'google' AND "issuer" IS NULL
+    `)
     await db.execute(sql`ALTER TABLE "account" ALTER COLUMN "issuer" SET NOT NULL`)
     await db.execute(sql`
       CREATE UNIQUE INDEX "account_issuer_account_id_idx"

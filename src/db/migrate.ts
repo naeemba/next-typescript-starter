@@ -143,8 +143,8 @@ export interface MigrateAuthOptions {
  * Apply pending package-owned auth migrations against `db`. Idempotent:
  * migrations already recorded in `__next_starter_migrations` are skipped.
  */
-export async function migrateAuth(db: Db, opts: MigrateAuthOptions = {}): Promise<void> {
-  const migrationsFolder = opts.migrationsFolder ?? resolveMigrationsFolder()
+export async function migrateAuth(db: Db, options: MigrateAuthOptions = {}): Promise<void> {
+  const migrationsFolder = options.migrationsFolder ?? resolveMigrationsFolder()
   await migrate(db, { migrationsFolder, migrationsTable: AUTH_MIGRATIONS_TABLE })
 }
 
@@ -176,9 +176,9 @@ export async function migrateAuth(db: Db, opts: MigrateAuthOptions = {}): Promis
  */
 export async function baselineAuth(
   db: Db,
-  opts: MigrateAuthOptions = {},
+  options: MigrateAuthOptions = {},
 ): Promise<{ inserted: number; skipped: number; pending: number }> {
-  const migrationsFolder = opts.migrationsFolder ?? resolveMigrationsFolder()
+  const migrationsFolder = options.migrationsFolder ?? resolveMigrationsFolder()
   const migrations = readMigrationFiles({ migrationsFolder })
 
   // Refuse to baseline a database that has not actually been provisioned with
