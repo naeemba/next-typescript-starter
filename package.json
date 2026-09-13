@@ -108,7 +108,7 @@
   "dependencies": {
     "better-auth": "^1.7.4",
     "drizzle-orm": "^0.45.2",
-    "zod": "^4.5.4"
+    "zod": "^4.6.4"
   },
   "peerDependencies": {
     "@better-auth/passkey": ">=1.7.0",
