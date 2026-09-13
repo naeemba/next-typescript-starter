@@ -102,7 +102,7 @@ jobs:
           --health-retries=10
 
     env:
-      DATABASE_URL: postgres://postgres:postgres@localhost:5432/node20_cli
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/starter_test
 
     steps:
       - uses: actions/checkout@v4
@@ -117,9 +117,6 @@ jobs:
 
       - name: Build (package)
         run: npm run build
-
-      - name: Create the database
-        run: PGPASSWORD=postgres psql -h localhost -U postgres -c 'CREATE DATABASE node20_cli'
 
       - name: Run the migrate CLI on Node 20
         run: node bin/cli.mjs migrate

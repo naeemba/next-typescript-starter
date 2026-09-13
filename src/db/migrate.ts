@@ -259,7 +259,7 @@ export async function baselineAuth(
           // migration that is missing — migration 1 can be fully applied and 2
           // not at all, and both are checked against the same end shape. Say
           // what the probe actually knows: the schema is not what migrations
-          // 0..index produce, and here is the part that is off.
+          // 0000..tag produce, and here is the part that is off.
           const tag = String(index).padStart(4, "0")
           throw new Error(
             `[@naeemba/next-starter] Refusing to baseline: the schema does not ` +

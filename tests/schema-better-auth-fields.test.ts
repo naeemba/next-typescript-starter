@@ -22,23 +22,27 @@ import * as schema from "../src/schema/index.js"
 // it among the model's fields.
 const PACKAGE_OWNED_FIELDS = new Set(["id"])
 
+/** Column property names on one of our tables, which is what the drizzle
+ *  adapter resolves a better-auth field by. */
+function declaredFields(model: string): string[] {
+  const table = schema[model as keyof typeof schema]
+  expect(table, `src/schema exports no "${model}" table`).toBeDefined()
+  return Object.keys(getTableColumns(table as never))
+}
+
 describe("auth schema vs better-auth", () => {
   const tables = getAuthTables({})
 
   for (const [model, table] of Object.entries(tables)) {
     it(`declares every field better-auth requires on "${model}"`, () => {
-      const declared = schema[model as keyof typeof schema]
-      expect(declared, `src/schema exports no "${model}" table`).toBeDefined()
-      expect(Object.keys(getTableColumns(declared as never))).toEqual(
+      expect(declaredFields(model)).toEqual(
         expect.arrayContaining(Object.keys(table.fields)),
       )
     })
 
     it(`declares no field better-auth does not know about on "${model}"`, () => {
-      const declared = schema[model as keyof typeof schema]
       const known = new Set([...Object.keys(table.fields), ...PACKAGE_OWNED_FIELDS])
-      const columns = Object.keys(getTableColumns(declared as never))
-      expect(columns.filter((field) => !known.has(field))).toEqual([])
+      expect(declaredFields(model).filter((field) => !known.has(field))).toEqual([])
     })
   }
 })
