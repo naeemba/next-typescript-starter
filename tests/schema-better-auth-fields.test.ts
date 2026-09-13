@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest"
 import { getAuthTables } from "better-auth/db"
 import { passkey } from "@better-auth/passkey"
+import { magicLink } from "better-auth/plugins"
 import { getTableColumns } from "drizzle-orm"
 import * as schema from "../src/schema/index.js"
 
@@ -32,10 +33,14 @@ function declaredFields(model: string): string[] {
 }
 
 describe("auth schema vs better-auth", () => {
-  // With no plugins better-auth returns only user/session/account/verification,
-  // which would leave `passkey` — the one table this package owns purely to
-  // mirror a plugin's schema — unguarded in both directions.
-  const tables = getAuthTables({ plugins: [passkey()] })
+  // The plugin list `createAuth` ships: `magicLink` unconditionally, `passkey`
+  // when the consumer asks for it. With no plugins better-auth returns only
+  // user/session/account/verification, which would leave `passkey` — the one
+  // table this package owns purely to mirror a plugin's schema — unguarded in
+  // both directions.
+  const tables = getAuthTables({
+    plugins: [passkey(), magicLink({ sendMagicLink: async () => {} })],
+  })
 
   for (const [model, table] of Object.entries(tables)) {
     it(`declares every field better-auth requires on "${model}"`, () => {

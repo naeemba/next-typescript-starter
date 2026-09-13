@@ -21,6 +21,11 @@ export const AUTH_MIGRATIONS_TABLE = "__next_starter_migrations"
  * An entry is cumulative, not one migration's own delta — it describes where
  * migrations `0..index` leave the schema. Two positions can therefore share one
  * entry, and do when a migration undoes an earlier one.
+ *
+ * Positions measured against the same shape MUST reference one shared const,
+ * the way `1` and `2` both reference `ISSUER_ROUND_TRIP`. `lastPositionOn`
+ * groups them by object identity, so two equal-looking inline literals are two
+ * separate groups and the refusal message names the wrong migration.
  */
 type BaselineEffectCheck = { table: string } & (
   /** Column that must be GONE by this position. */
