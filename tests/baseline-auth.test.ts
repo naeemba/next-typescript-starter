@@ -59,9 +59,15 @@ async function hasIssuerColumn(): Promise<boolean> {
   return (columns as unknown as unknown[]).length > 0
 }
 
-async function hasIndex(name: string): Promise<boolean> {
+/** Name-only matching cannot tell a unique index from a plain one, and
+ *  uniqueness is the whole point of 0002's index: without it two rows may share
+ *  one (provider_id, account_id), so one identity resolves to two users. Pass
+ *  `{ unique: true }` where that matters. */
+async function hasIndex(name: string, { unique = false } = {}): Promise<boolean> {
   const indexes = await db.execute(sql`
-    SELECT 1 FROM pg_indexes WHERE schemaname = 'public' AND indexname = ${name}
+    SELECT 1 FROM pg_indexes
+     WHERE schemaname = 'public' AND indexname = ${name}
+       AND (${!unique} OR indexdef LIKE 'CREATE UNIQUE INDEX%')
   `)
   return (indexes as unknown as unknown[]).length > 0
 }
@@ -150,7 +156,7 @@ describeWithDatabase("baselineAuth (integration)", () => {
     // what they leave behind is the unique index on (provider_id, account_id).
     await migrateAuth(db)
     expect(await hasIssuerColumn()).toBe(false)
-    expect(await hasIndex("account_provider_id_account_id_idx")).toBe(true)
+    expect(await hasIndex("account_provider_id_account_id_idx", { unique: true })).toBe(true)
   })
 
   // An app on 0.11.0 has `account.issuer`, because 0001 shipped there and 0002
@@ -268,7 +274,7 @@ describeWithDatabase("0002 account.issuer removal (integration)", () => {
 
     expect(await hasIssuerColumn()).toBe(false)
     expect(await hasIndex("account_issuer_account_id_idx")).toBe(false)
-    expect(await hasIndex("account_provider_id_account_id_idx")).toBe(true)
+    expect(await hasIndex("account_provider_id_account_id_idx", { unique: true })).toBe(true)
   })
 
   // Two issuers can share one provider_id, so rows 0001's index let through can
