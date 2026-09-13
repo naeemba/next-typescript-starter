@@ -36,6 +36,12 @@ afterAll(async () => {
   await client?.end({ timeout: 5 })
 })
 
+/** Hand the database back the way a fresh install leaves it. */
+async function resetToMigrated(): Promise<void> {
+  await dropAuth(db)
+  await migrateAuth(db)
+}
+
 /** Back to nothing: no auth tables, no journal. */
 async function dropAuth(database: Database): Promise<void> {
   await database.execute(sql`DROP SCHEMA IF EXISTS drizzle CASCADE`)
@@ -73,6 +79,13 @@ describe("BASELINE_EFFECT_CHECKS", () => {
     expect(checked).toEqual(migrations.map((_, index) => index).slice(1))
   })
 })
+
+/** The pre-1.7 schema with one user on it: 0000 only, no issuer column. */
+async function seedPreIssuerSchema(): Promise<void> {
+  await dropAuth(db)
+  await run(0)
+  await db.execute(sql`INSERT INTO "user" (id, email) VALUES ('u1', 'a@example.com')`)
+}
 
 /** Run one shipped migration's statements the way the real migrator does —
  *  all of them in one transaction, so a failure rolls the whole thing back. */
@@ -163,8 +176,7 @@ describeWithDatabase("baselineAuth (integration)", () => {
     expect(result.pending).toBe(0)
 
     // Leave the database whole for whoever runs next.
-    await dropAuth(db)
-    await migrateAuth(db)
+    await resetToMigrated()
   })
 })
 
@@ -185,17 +197,10 @@ describeWithDatabase("0001 account.issuer backfill (integration)", () => {
   // failed migration behind: tables present, journal gone. Hand the database
   // back fully migrated so whoever owns it next — a dev running the example
   // after `npm test` — finds it the way a fresh install leaves it.
-  afterAll(async () => {
-    await dropAuth(db)
-    await migrateAuth(db)
-  })
+  afterAll(resetToMigrated)
 
   // Start from the pre-1.7 schema every time: 0000 only, no issuer column.
-  beforeEach(async () => {
-    await dropAuth(db)
-    await run(0)
-    await db.execute(sql`INSERT INTO "user" (id, email) VALUES ('u1', 'a@example.com')`)
-  })
+  beforeEach(seedPreIssuerSchema)
 
   it("maps google rows to Google's own OIDC issuer", async () => {
     await db.execute(sql`
@@ -247,16 +252,11 @@ describeWithDatabase("0001 account.issuer backfill (integration)", () => {
 describeWithDatabase("0002 account.issuer removal (integration)", () => {
   // 0002 undoes 0001. Every test here starts from the schema 0001 leaves.
   beforeEach(async () => {
-    await dropAuth(db)
-    await run(0)
+    await seedPreIssuerSchema()
     await run(1)
-    await db.execute(sql`INSERT INTO "user" (id, email) VALUES ('u1', 'a@example.com')`)
   })
 
-  afterAll(async () => {
-    await dropAuth(db)
-    await migrateAuth(db)
-  })
+  afterAll(resetToMigrated)
 
   it("drops the issuer column and moves uniqueness to (providerId, accountId)", async () => {
     await db.execute(sql`

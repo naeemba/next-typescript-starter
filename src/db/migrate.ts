@@ -15,19 +15,18 @@ type Db = ReturnType<typeof drizzle<typeof schema>>
 export const AUTH_MIGRATIONS_TABLE = "__next_starter_migrations"
 
 /**
- * The state the `account` table must be in for a migration to count as applied.
- * A migration that adds a column names it in `column`; one that removes a
- * column names it in `absentColumn`; `index` is the index left in place once
- * the migration has run.
+ * The schema shape a database must already have for the migrations up to and
+ * including a given position to count as applied.
+ *
+ * An entry is cumulative, not one migration's own delta — it describes where
+ * migrations `0..index` leave the schema. Two positions can therefore share one
+ * entry, and do when a migration undoes an earlier one.
  */
 interface BaselineEffectCheck {
   table: string
-  /** Column the migration ADDS — present, and NOT NULL when `notNull`. */
-  column?: string
-  notNull?: boolean
-  /** Column the migration REMOVES — gone once it has run. */
+  /** Column that must be GONE by this position. */
   absentColumn?: string
-  /** Index left in place once the migration has run. */
+  /** Index that must be PRESENT by this position. */
   index?: string
 }
 
@@ -49,10 +48,10 @@ const ISSUER_ROUND_TRIP: BaselineEffectCheck = {
  * Baseline therefore stops at the first migration whose effect is absent and
  * lets `migrateAuth` apply that one for real.
  *
- * Each entry must describe the migration's WHOLE effect, not one part of it:
- * a database where a column was added by hand but its unique index never
- * created must not be baselined past it. Position 0 needs no entry — the
- * canonical-table probe below already proves 0000 ran.
+ * Each entry must describe the WHOLE shape, not one part of it: a database
+ * where the column was dropped by hand but the index never created must not be
+ * baselined past it. Position 0 needs no entry — the canonical-table probe
+ * below already proves 0000 ran.
  *
  * Every migration after 0000 needs an entry here, or `baselineAuth` records it
  * blind. `tests/baseline-auth.test.ts` fails when one is missing.
@@ -76,76 +75,57 @@ async function exists(db: Db, query: ReturnType<typeof sql>): Promise<boolean> {
 
 interface MissingEffect {
   /**
-   * Nothing of this migration is in place yet, so `migrateAuth` can still run
-   * it from the top. False means some of it is there and some is not, which
-   * only a human can untangle.
+   * Nothing of this shape is in place yet, so `migrateAuth` can still run the
+   * migrations that produce it from the top. False means some of it is there
+   * and some is not, which only a human can untangle.
    */
   untouched: boolean
   /** Human-readable list of every part that is absent. Empty means fully applied. */
   missing: string[]
 }
 
-async function columnExists(db: Db, table: string, column: string): Promise<boolean> {
-  return exists(
-    db,
-    sql`
-    SELECT 1
-      FROM information_schema.columns
-     WHERE table_schema = 'public'
-       AND table_name = ${table}
-       AND column_name = ${column}
-     LIMIT 1
-  `,
-  )
-}
-
 /**
- * Which parts of a migration's effect the database does NOT already have.
- * `missing` empty means the migration is fully applied and safe to record.
+ * Which parts of the expected shape the database does NOT already have.
+ * `missing` empty means the migrations up to this position are fully applied
+ * and safe to record.
  */
 async function missingEffect(db: Db, check: BaselineEffectCheck): Promise<MissingEffect> {
   const missing: string[] = []
   let untouched = true
 
-  if (check.column) {
-    const columns = await db.execute(sql`
-      SELECT is_nullable
+  if (check.absentColumn) {
+    const column = await exists(
+      db,
+      sql`
+      SELECT 1
         FROM information_schema.columns
        WHERE table_schema = 'public'
          AND table_name = ${check.table}
-         AND column_name = ${check.column}
+         AND column_name = ${check.absentColumn}
        LIMIT 1
-    `)
-    const column = (columns as unknown as Array<{ is_nullable: string }>)[0]
-    if (!column) {
-      missing.push(`column "${check.table}"."${check.column}"`)
-    } else {
-      untouched = false
-      if (check.notNull && column.is_nullable !== "NO") {
-        missing.push(`NOT NULL on "${check.table}"."${check.column}"`)
-      }
-    }
-  }
-
-  if (check.absentColumn) {
-    if (await columnExists(db, check.table, check.absentColumn)) {
+    `,
+    )
+    if (column) {
       // The column is still there, so the migration that drops it has not run —
-      // and neither has whatever re-creates the state around it. Re-running the
-      // whole group from the top would try to add a column that already exists.
+      // and neither, therefore, has the one that added it been undone. Running
+      // the group from the top would try to add a column that already exists.
       untouched = false
       missing.push(`removal of column "${check.table}"."${check.absentColumn}"`)
     }
   }
 
   if (check.index) {
-    const index = sql`
+    const index = await exists(
+      db,
+      sql`
       SELECT 1
         FROM pg_indexes
        WHERE schemaname = 'public'
          AND indexname = ${check.index}
        LIMIT 1
-    `
-    if (!(await exists(db, index))) missing.push(`index "${check.index}"`)
+    `,
+    )
+    if (!index) missing.push(`index "${check.index}"`)
   }
 
   return { untouched, missing }
