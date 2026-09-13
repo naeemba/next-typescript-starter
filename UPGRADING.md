@@ -40,9 +40,22 @@ better-auth rejects any account lookup matching more than one row, so those
 rows are already broken. If two issuers share a `provider_id`, give each its own
 `provider_id` and update the matching rows, keeping different users separate.
 
-**If you are on the pre-0.8.0 baseline path**, nothing changes for you.
-`0001` and `0002` cancel out, so `baseline` treats them as one step: it stops
-before `0001` and lets `migrateAuth` run the round trip.
+**If you are on the pre-0.8.0 baseline path**, `0001` and `0002` cancel out, so
+`baseline` treats them as one step: it stops before `0001` and lets `migrate`
+run the round trip. That round trip is not a no-op for you — `0001` runs in
+full. If you added a social provider of your own, it still refuses to guess an
+issuer for it:
+
+```
+ERROR: Cannot backfill account.issuer for provider_id(s): github
+```
+
+Set a synthetic issuer on those rows and re-run. Give **each** `provider_id` its
+own value (`local:oauth:github`, `local:oauth:gitlab`): `0001`'s unique index is
+on `(issuer, account_id)`, so one shared value makes two providers that happen
+to use the same `account_id` collide — a pair that is perfectly legal under
+`0002`'s `(provider_id, account_id)` index. `0002` then drops the column, so
+whatever you pick is discarded moments later.
 
 **If you are on 0.11.0 and your migration journal is gone**, `baseline` now
 refuses rather than handing a database that still has `issuer` to `migrate`,
