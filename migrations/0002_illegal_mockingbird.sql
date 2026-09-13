@@ -4,7 +4,14 @@
 -- at init and refuses authentication requests on a mismatch, so a database
 -- still carrying a NOT NULL `issuer` better-auth never writes blocks sign-in
 -- outright. Undo migration 0001.
-DROP INDEX "account_issuer_account_id_idx";--> statement-breakpoint
+--
+-- Both drops say IF EXISTS. 1.7.3 names `account.issuer` in the schema error
+-- it prints at boot, so an operator whose sign-ins are failing may well have
+-- dropped the column by hand to get working again — and in Postgres that
+-- takes `account_issuer_account_id_idx` with it. Without IF EXISTS this
+-- migration would roll back on an index that is already gone, and the unique
+-- index below would never be created.
+DROP INDEX IF EXISTS "account_issuer_account_id_idx";--> statement-breakpoint
 
 -- The uniqueness that index guaranteed has to land somewhere, and it moves
 -- back to the key better-auth actually looks up on. Creating the index on a
@@ -35,4 +42,4 @@ CREATE UNIQUE INDEX "account_provider_id_account_id_idx" ON "account" USING btre
 -- Dropping the column discards the backfilled issuer values. They are
 -- reconstructible (every row this package wrote is Google's own OIDC issuer)
 -- and better-auth no longer reads them.
-ALTER TABLE "account" DROP COLUMN "issuer";
+ALTER TABLE "account" DROP COLUMN IF EXISTS "issuer";
