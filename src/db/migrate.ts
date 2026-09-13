@@ -22,13 +22,12 @@ export const AUTH_MIGRATIONS_TABLE = "__next_starter_migrations"
  * migrations `0..index` leave the schema. Two positions can therefore share one
  * entry, and do when a migration undoes an earlier one.
  */
-interface BaselineEffectCheck {
-  table: string
+type BaselineEffectCheck = { table: string } & (
   /** Column that must be GONE by this position. */
-  absentColumn?: string
+  | { absentColumn: string; index?: string }
   /** Index that must be PRESENT by this position. */
-  index?: string
-}
+  | { absentColumn?: string; index: string }
+)
 
 const ISSUER_ROUND_TRIP: BaselineEffectCheck = {
   table: "account",
