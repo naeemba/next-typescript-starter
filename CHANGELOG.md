@@ -2,6 +2,23 @@
 
 All notable changes to `@naeemba/next-starter`. Migration steps live in [UPGRADING.md](./UPGRADING.md).
 
+## [0.12.0](https://github.com/naeemba/next-typescript-starter/compare/v0.11.0...v0.12.0) (2026-09-13)
+
+### ⚠ BREAKING CHANGES
+
+* **deps:** vitest 4.1.11 -> 5.0.0, CI on node 22
+* **schema:** drop account.issuer, better-auth 1.7.3 reverted it
+
+### Bug Fixes
+
+* **migrate:** make 0002 survive a hand-dropped issuer column ([51128fe](https://github.com/naeemba/next-typescript-starter/commit/51128fe4ba23be5e97ecb87d81df16be115ab7c8))
+* **migrate:** make the baseline refusal say what it actually knows ([fc2bb34](https://github.com/naeemba/next-typescript-starter/commit/fc2bb34481ef3372009654eb53bef7e497176fb5))
+* **migrate:** name the migration the baseline probe actually measures ([41c2adc](https://github.com/naeemba/next-typescript-starter/commit/41c2adce8fade5202bbe976c720992788317eb2e))
+* **schema:** drop account.issuer, better-auth 1.7.3 reverted it ([dc39d1e](https://github.com/naeemba/next-typescript-starter/commit/dc39d1e8eb4a17f0121a1ce1a23ec5472d00305e))
+
+### Miscellaneous Chores
+
+* **deps:** vitest 4.1.11 -> 5.0.0, CI on node 22 ([1bb93b4](https://github.com/naeemba/next-typescript-starter/commit/1bb93b488fb8f6fa973838dc9537a1df67ade59f))
 ## [0.11.0](https://github.com/naeemba/next-typescript-starter/compare/v0.10.2...v0.11.0) (2026-08-31)
 
 ### ⚠ BREAKING CHANGES
