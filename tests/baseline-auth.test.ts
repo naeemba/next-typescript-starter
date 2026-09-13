@@ -36,6 +36,12 @@ afterAll(async () => {
   await client?.end({ timeout: 5 })
 })
 
+/** Hand the database back the way a fresh install leaves it. */
+async function resetToMigrated(): Promise<void> {
+  await dropAuth(db)
+  await migrateAuth(db)
+}
+
 /** Back to nothing: no auth tables, no journal. */
 async function dropAuth(database: Database): Promise<void> {
   await database.execute(sql`DROP SCHEMA IF EXISTS drizzle CASCADE`)
@@ -53,6 +59,19 @@ async function hasIssuerColumn(): Promise<boolean> {
   return (columns as unknown as unknown[]).length > 0
 }
 
+/** Name-only matching cannot tell a unique index from a plain one, and
+ *  uniqueness is the whole point of 0002's index: without it two rows may share
+ *  one (provider_id, account_id), so one identity resolves to two users. Pass
+ *  `{ unique: true }` where that matters. */
+async function hasIndex(name: string, { unique = false } = {}): Promise<boolean> {
+  const indexes = await db.execute(sql`
+    SELECT 1 FROM pg_indexes
+     WHERE schemaname = 'public' AND indexname = ${name}
+       AND (${!unique} OR indexdef LIKE 'CREATE UNIQUE INDEX%')
+  `)
+  return (indexes as unknown as unknown[]).length > 0
+}
+
 // A migration with no entry in the map is baselined blind — recorded as
 // already-applied without anything proving its DDL ever ran. That is the exact
 // bug this suite exists for, so a new migration without a check fails here
@@ -66,6 +85,22 @@ describe("BASELINE_EFFECT_CHECKS", () => {
     expect(checked).toEqual(migrations.map((_, index) => index).slice(1))
   })
 })
+
+/** The pre-1.7 schema with one user on it: 0000 only, no issuer column. */
+async function seedPreIssuerSchema(): Promise<void> {
+  await dropAuth(db)
+  await run(0)
+  await db.execute(sql`INSERT INTO "user" (id, email) VALUES ('u1', 'a@example.com')`)
+}
+
+/** Run one shipped migration's statements the way the real migrator does —
+ *  all of them in one transaction, so a failure rolls the whole thing back. */
+const run = (index: number) =>
+  db.transaction(async (tx) => {
+    for (const statement of migrations[index]!.sql) {
+      await tx.execute(sql.raw(statement))
+    }
+  })
 
 describeWithDatabase("baselineAuth (integration)", () => {
   beforeAll(async () => {
@@ -106,64 +141,48 @@ describeWithDatabase("baselineAuth (integration)", () => {
     await migrateAuth(db)
   })
 
-  // A pre-0.8.0 app's tables were created before better-auth needed
-  // `account.issuer`. Baselining past that migration would record DDL that
-  // never ran, and the miss would only show up as a failed sign-in.
+  // A pre-0.8.0 app's tables predate everything after 0000. Baselining past
+  // that would record DDL that never ran, and the miss would only show up as a
+  // failed sign-in.
   it("stops baselining at a migration the database does not already have", async () => {
-    await db.execute(sql`DROP SCHEMA IF EXISTS drizzle CASCADE`)
-    await db.execute(sql`ALTER TABLE "account" DROP COLUMN IF EXISTS "issuer" CASCADE`)
+    await dropAuth(db)
+    await run(0) // 0000 only, no journal — exactly a pre-0.8.0 app
 
     const result = await baselineAuth(db)
-    expect(result.inserted).toBe(1) // 0000 only; 0001 adds the missing column
+    expect(result.inserted).toBe(1)
     expect(result.pending).toBe(migrations.length - 1)
 
+    // 0001 adds `issuer` and 0002 drops it again. Both still have to run, and
+    // what they leave behind is the unique index on (provider_id, account_id).
     await migrateAuth(db)
-    expect(await hasIssuerColumn()).toBe(true)
+    expect(await hasIssuerColumn()).toBe(false)
+    expect(await hasIndex("account_provider_id_account_id_idx", { unique: true })).toBe(true)
   })
 
-  // An operator who followed better-auth's own upgrade guide and ran
-  // `ALTER TABLE account ADD COLUMN issuer text` by hand has the column, but it
-  // is nullable and there is no unique index — so BOTH halves of 0001 are still
-  // missing. Recording it there would leave two Google accounts free to share
-  // one (issuer, account_id) — one identity, two users — and plain `migrate`
-  // cannot rescue it either: its first statement re-adds a column that is
-  // already there. So refuse, and name every part that is absent.
-  it("refuses when the column exists but its NOT NULL and index do not", async () => {
+  // An app on 0.11.0 has `account.issuer`, because 0001 shipped there and 0002
+  // did not exist yet. If its journal is gone, baseline must not treat it as a
+  // pre-0.8.0 database: recording nothing and handing it to `migrate` would run
+  // 0001's `ADD COLUMN issuer` against a column that is already there. Half the
+  // work is done and half is not, so refuse and name every part that is absent.
+  it("refuses when the issuer column is still there from 0001", async () => {
+    await dropAuth(db)
+    await run(0)
+    await run(1)
     await db.execute(sql`DROP SCHEMA IF EXISTS drizzle CASCADE`)
-    await db.execute(sql`ALTER TABLE "account" ALTER COLUMN "issuer" DROP NOT NULL`)
-    await db.execute(sql`DROP INDEX IF EXISTS "account_issuer_account_id_idx"`)
-    // A real pre-1.7 app has rows, and hand-adding a nullable column leaves
-    // their issuer NULL — which is what makes the backfill below mandatory
-    // rather than decorative.
-    await db.execute(sql`INSERT INTO "user" (id, email) VALUES ('u1', 'a@example.com')`)
-    await db.execute(sql`
-      INSERT INTO "account" (id, user_id, account_id, provider_id)
-      VALUES ('a1', 'u1', 'google-subject-1', 'google')
-    `)
 
     await expect(baselineAuth(db)).rejects.toThrow(
-      /only partly applied.*NOT NULL.*account_issuer_account_id_idx/s,
+      /does not match what migrations 0000\.\.0002 produce.*removal of column "account"\."issuer".*account_provider_id_account_id_idx/s,
     )
-    // 0001 was not recorded, so finishing the missing parts by hand and
-    // re-running completes the baseline — the operator is not left stuck. Same
-    // order as UPGRADING.md and 0001 itself: backfill, tighten, then index.
-    // Drop the UPDATE and `SET NOT NULL` fails on the row inserted above.
-    await db.execute(sql`
-      UPDATE "account" SET "issuer" = 'https://accounts.google.com'
-       WHERE "provider_id" = 'google' AND "issuer" IS NULL
-    `)
-    await db.execute(sql`ALTER TABLE "account" ALTER COLUMN "issuer" SET NOT NULL`)
-    await db.execute(sql`
-      CREATE UNIQUE INDEX "account_issuer_account_id_idx"
-        ON "account" ("issuer", "account_id")
-    `)
+
+    // Nothing was recorded, so applying the missing half by hand — 0002 itself —
+    // and re-running completes the baseline. The operator is not left stuck.
+    await run(2)
     const result = await baselineAuth(db)
     expect(result.inserted + result.skipped).toBe(migrations.length)
     expect(result.pending).toBe(0)
 
     // Leave the database whole for whoever runs next.
-    await dropAuth(db)
-    await migrateAuth(db)
+    await resetToMigrated()
   })
 })
 
@@ -179,33 +198,15 @@ function causeMessage(err: unknown): string {
   return messages.join("\n")
 }
 
-describeWithDatabase("account.issuer backfill (integration)", () => {
-  // The real migrator wraps a migration's statements in one transaction
-  // (`PgDialect.migrate` → `session.transaction`), so a failure rolls the whole
-  // thing back. Running them the same way here is what lets the failure tests
-  // assert what an operator actually ends up with.
-  const run = (index: number) =>
-    db.transaction(async (tx) => {
-      for (const statement of migrations[index]!.sql) {
-        await tx.execute(sql.raw(statement))
-      }
-    })
-
+describeWithDatabase("0001 account.issuer backfill (integration)", () => {
   // Every test here starts from the pre-1.7 schema, and the last one leaves a
   // failed migration behind: tables present, journal gone. Hand the database
   // back fully migrated so whoever owns it next — a dev running the example
   // after `npm test` — finds it the way a fresh install leaves it.
-  afterAll(async () => {
-    await dropAuth(db)
-    await migrateAuth(db)
-  })
+  afterAll(resetToMigrated)
 
   // Start from the pre-1.7 schema every time: 0000 only, no issuer column.
-  beforeEach(async () => {
-    await dropAuth(db)
-    await run(0)
-    await db.execute(sql`INSERT INTO "user" (id, email) VALUES ('u1', 'a@example.com')`)
-  })
+  beforeEach(seedPreIssuerSchema)
 
   it("maps google rows to Google's own OIDC issuer", async () => {
     await db.execute(sql`
@@ -251,5 +252,48 @@ describeWithDatabase("account.issuer backfill (integration)", () => {
       /account_issuer_account_id_idx/,
     )
     expect(await hasIssuerColumn()).toBe(false)
+  })
+})
+
+describeWithDatabase("0002 account.issuer removal (integration)", () => {
+  // 0002 undoes 0001. Every test here starts from the schema 0001 leaves.
+  beforeEach(async () => {
+    await seedPreIssuerSchema()
+    await run(1)
+  })
+
+  afterAll(resetToMigrated)
+
+  it("drops the issuer column and moves uniqueness to (providerId, accountId)", async () => {
+    await db.execute(sql`
+      INSERT INTO "account" (id, user_id, account_id, provider_id, issuer)
+      VALUES ('a1', 'u1', 'google-subject-1', 'google', 'https://accounts.google.com')
+    `)
+
+    await run(2)
+
+    expect(await hasIssuerColumn()).toBe(false)
+    expect(await hasIndex("account_issuer_account_id_idx")).toBe(false)
+    expect(await hasIndex("account_provider_id_account_id_idx", { unique: true })).toBe(true)
+  })
+
+  // Two issuers can share one provider_id, so rows 0001's index let through can
+  // collide on the key 0002 makes unique. Postgres would report that as a bare
+  // constraint violation naming neither the rows nor the fix, so the migration
+  // finds them first.
+  it("names the duplicate (providerId, accountId) rows that block it", async () => {
+    await db.execute(sql`INSERT INTO "user" (id, email) VALUES ('u2', 'b@example.com')`)
+    await db.execute(sql`
+      INSERT INTO "account" (id, user_id, account_id, provider_id, issuer) VALUES
+        ('a1', 'u1', 'shared-subject', 'work-sso', 'https://one.example.com'),
+        ('a2', 'u2', 'shared-subject', 'work-sso', 'https://two.example.com')
+    `)
+
+    await expect(run(2).catch(causeMessage)).resolves.toMatch(
+      /Duplicate \(provider_id, account_id\) rows block this migration: \(work-sso, shared-subject\)/,
+    )
+    // The whole migration rolls back, so the operator keeps the schema they
+    // started on rather than a half-dropped column.
+    expect(await hasIssuerColumn()).toBe(true)
   })
 })

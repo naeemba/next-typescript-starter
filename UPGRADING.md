@@ -1,6 +1,84 @@
 # Upgrading
 
+## 0.11.x → 0.12.0
+
+### better-auth 1.7.3 reverted `account.issuer` (new migration, action required)
+
+better-auth has put account identity back where it was before 1.7: an account
+is keyed by `(providerId, accountId)`, and `issuer` is no longer part of
+better-auth's schema at all. Upstream [reversed the 1.7
+change](https://better-auth.com/docs/guides/1-7-upgrade-guide#account-identity-keeps-the-provider-key)
+to keep its core tables stable across 1.x.
+
+**This is not optional.** 1.7.3 also validates the schema when better-auth
+starts, and refuses authentication requests when it finds a mismatch. Leave
+0.11.0's schema in place and your app boots, logs
+
+```
+[Better Auth]: Drizzle schema mismatch
+  Required columns Better Auth never writes
+    account.issuer
+```
+
+and then every sign-in fails.
+
+Migration `0002` drops the `issuer` column and its index, and moves the unique
+index onto `(provider_id, account_id)` — the key better-auth actually looks up
+on. Run your usual `next-starter migrate`.
+
+The backfilled `issuer` values are discarded. Nothing reads them any more, and
+every row this package wrote held Google's own OIDC issuer.
+
+**If two accounts share one `(provider_id, account_id)`**, the migration stops
+and names them rather than failing on a bare constraint violation:
+
+```
+ERROR: Duplicate (provider_id, account_id) rows block this migration: (work-sso, shared-subject)
+```
+
+better-auth rejects any account lookup matching more than one row, so those
+rows are already broken. If two issuers share a `provider_id`, give each its own
+`provider_id` and update the matching rows, keeping different users separate.
+
+**If you are on the pre-0.8.0 baseline path**, `0001` and `0002` cancel out, so
+`baseline` treats them as one step: it stops before `0001` and lets `migrate`
+run the round trip. That round trip is not a no-op for you — `0001` runs in
+full. If you added a social provider of your own, it still refuses to guess an
+issuer for it:
+
+```
+ERROR: Cannot backfill account.issuer for provider_id(s): github
+```
+
+Set a synthetic issuer on those rows and re-run. Give **each** `provider_id` its
+own value (`local:oauth:github`, `local:oauth:gitlab`): `0001`'s unique index is
+on `(issuer, account_id)`, so one shared value makes two providers that happen
+to use the same `account_id` collide — a pair that is perfectly legal under
+`0002`'s `(provider_id, account_id)` index. `0002` then drops the column, so
+whatever you pick is discarded moments later.
+
+**If you are on 0.11.0 and your migration journal is gone**, `baseline` now
+refuses rather than handing a database that still has `issuer` to `migrate`,
+which would fail re-adding a column that is already there:
+
+```
+ERROR: Refusing to baseline: the schema does not match what migrations 0000..0002 produce.
+  Missing: removal of column "account"."issuer", index "account_provider_id_account_id_idx".
+  ...
+  Apply by hand the SQL that produces the missing part(s) above — here, `0002` —
+  then re-run `next-starter migrate baseline`.
+```
+
+That is `0002`'s SQL: it drops `issuer` and creates the
+`(provider_id, account_id)` index. `0001` must NOT be re-run — its first
+statement adds a column your database already has.
+
 ## 0.10.x → 0.11.0
+
+> **Superseded.** Everything below shipped in 0.11.0 and was reverted in
+> 0.12.0 — see above. If you are upgrading straight from 0.10.x, migrations
+> `0001` and `0002` both run and cancel out; read this section only to
+> understand an error one of them raises.
 
 ### better-auth 1.7 — `account.issuer` (new migration, action required)
 

@@ -40,7 +40,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "22"
           cache: "npm"
 
       - name: Install
@@ -77,3 +77,46 @@ jobs:
 
       - name: E2E smoke test
         run: npm --workspace examples/basic run test:e2e
+
+  # The suite above runs on 22 because vitest 5 requires it. vitest is a
+  # devDependency; `engines` still promises the published package runs on Node
+  # 20, and an unproven promise is the kind that breaks quietly — a Node 22-only
+  # API in `src/` or `bin/` would publish green and crash the first time a
+  # consumer on 20 ran `next-starter migrate`. So build and run exactly that on
+  # 20. No vitest here, which is the only thing that needs the newer runtime.
+  node20:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: starter_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/starter_test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install
+        run: npm ci
+
+      - name: Build (package)
+        run: npm run build
+
+      - name: Run the migrate CLI on Node 20
+        run: node bin/cli.mjs migrate

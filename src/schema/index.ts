@@ -47,12 +47,10 @@ export const account = pgTable(
     userId: text("user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
-    // better-auth >=1.7 keys an account on (issuer, accountId), not on
-    // providerId. `issuer` is the identity authority: the provider's own
-    // OIDC issuer where it declares one ("https://accounts.google.com"), or
-    // a synthetic "local:"-namespaced value where it doesn't. Every account
-    // lookup filters on it, so the column and its unique index are required.
-    issuer: text("issuer").notNull(),
+    // better-auth keys an account on (providerId, accountId). 1.7.0-1.7.2
+    // briefly keyed it on (issuer, accountId) instead; 1.7.3 put that back
+    // and no longer writes `issuer` at all, so the column is gone again —
+    // see migration 0002.
     accountId: text("account_id").notNull(),
     providerId: text("provider_id").notNull(),
     accessToken: text("access_token"),
@@ -67,7 +65,7 @@ export const account = pgTable(
   },
   (t) => [
     index("account_user_id_idx").on(t.userId),
-    uniqueIndex("account_issuer_account_id_idx").on(t.issuer, t.accountId),
+    uniqueIndex("account_provider_id_account_id_idx").on(t.providerId, t.accountId),
   ],
 )
 

@@ -37,19 +37,27 @@ describe("auth schema indexes", () => {
     expect(indexColumns(account, "account_user_id_idx")).toEqual(["user_id"])
   })
 
-  // better-auth >=1.7 looks an account up by (issuer, accountId) and relies on
+  // better-auth looks an account up by (providerId, accountId) and relies on
   // the pair being unique — two rows sharing it would let one identity resolve
-  // to two users.
-  it("ships a unique index on account.(issuer, accountId)", () => {
-    expect(indexNames(account)).toContain("account_issuer_account_id_idx")
-    expect(indexColumns(account, "account_issuer_account_id_idx")).toEqual([
-      "issuer",
+  // to two users, and better-auth rejects the lookup outright.
+  it("ships a unique index on account.(providerId, accountId)", () => {
+    expect(indexNames(account)).toContain("account_provider_id_account_id_idx")
+    expect(indexColumns(account, "account_provider_id_account_id_idx")).toEqual([
+      "provider_id",
       "account_id",
     ])
     // Uniqueness is the whole point: without it the index is a plain lookup
-    // index and two rows may share one (issuer, accountId). `index(...)` in
+    // index and two rows may share one (providerId, accountId). `index(...)` in
     // place of `uniqueIndex(...)` passes every other assertion here.
-    expect(indexIsUnique(account, "account_issuer_account_id_idx")).toBe(true)
+    expect(indexIsUnique(account, "account_provider_id_account_id_idx")).toBe(true)
+  })
+
+  // 1.7.0-1.7.2 keyed accounts on (issuer, accountId); 1.7.3 reverted that and
+  // stopped writing `issuer`. A schema that still carries it NOT NULL makes
+  // better-auth refuse every authentication request at init.
+  it("no longer ships the issuer column or its index", () => {
+    expect(indexNames(account)).not.toContain("account_issuer_account_id_idx")
+    expect(Object.keys(account)).not.toContain("issuer")
   })
 
   it("ships an index on verification.identifier", () => {

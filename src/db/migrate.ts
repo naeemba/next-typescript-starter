@@ -15,6 +15,32 @@ type Db = ReturnType<typeof drizzle<typeof schema>>
 export const AUTH_MIGRATIONS_TABLE = "__next_starter_migrations"
 
 /**
+ * The schema shape a database must already have for the migrations up to and
+ * including a given position to count as applied.
+ *
+ * An entry is cumulative, not one migration's own delta — it describes where
+ * migrations `0..index` leave the schema. Two positions can therefore share one
+ * entry, and do when a migration undoes an earlier one.
+ *
+ * Positions measured against the same shape MUST reference one shared const,
+ * the way `1` and `2` both reference `ISSUER_ROUND_TRIP`. `lastPositionOn`
+ * groups them by object identity, so two equal-looking inline literals are two
+ * separate groups and the refusal message names the wrong migration.
+ */
+type BaselineEffectCheck = { table: string } & (
+  /** Column that must be GONE by this position. */
+  | { absentColumn: string; index?: string }
+  /** Index that must be PRESENT by this position. */
+  | { absentColumn?: string; index: string }
+)
+
+const ISSUER_ROUND_TRIP: BaselineEffectCheck = {
+  table: "account",
+  absentColumn: "issuer",
+  index: "account_provider_id_account_id_idx",
+}
+
+/**
  * Migrations that `baselineAuth` may only record as already-applied when the
  * database can be shown to already have their effect. Keyed by position in the
  * shipped journal.
@@ -22,32 +48,40 @@ export const AUTH_MIGRATIONS_TABLE = "__next_starter_migrations"
  * Baseline exists for apps whose auth tables were created by the pre-0.8.0
  * drizzle-kit path, so their schema matches migration 0000 and nothing after
  * it. Recording a later migration for such a database would skip DDL that
- * never ran — 0001 adds `account.issuer`, which better-auth >=1.7 filters on
- * for every account lookup, so the miss would only show up as a failed
- * sign-in. Baseline therefore stops at the first migration whose effect is
- * absent and lets `migrateAuth` apply that one for real.
+ * never ran, and the miss would only show up later as a failed sign-in.
+ * Baseline therefore stops at the first migration whose effect is absent and
+ * lets `migrateAuth` apply that one for real.
  *
- * Each entry must describe the migration's WHOLE effect, not one part of it:
- * a database where the column was added by hand but the unique index never
- * created must not be baselined past it. Position 0 needs no entry — the
- * canonical-table probe below already proves 0000 ran.
+ * Each entry must describe the WHOLE shape, not one part of it: a database
+ * where the column was dropped by hand but the index never created must not be
+ * baselined past it. Position 0 needs no entry — the canonical-table probe
+ * below already proves 0000 ran.
  *
  * Every migration after 0000 needs an entry here, or `baselineAuth` records it
  * blind. `tests/baseline-auth.test.ts` fails when one is missing.
  */
-export const BASELINE_EFFECT_CHECKS: Record<
-  number,
-  { table: string; column: string; notNull: boolean; index?: string }
-> = {
-  1: {
-    table: "account",
-    column: "issuer",
-    notNull: true,
-    index: "account_issuer_account_id_idx",
-  },
+export const BASELINE_EFFECT_CHECKS: Record<number, BaselineEffectCheck> = {
+  // 0001 added `account.issuer` and 0002 dropped it again, because better-auth
+  // 1.7.3 put account identity back on (providerId, accountId). The two cancel
+  // out: a database that ran both is shaped exactly like one that ran neither,
+  // apart from the unique index 0002 leaves behind. So both positions are
+  // checked against that end state — issuer gone, provider index in place —
+  // and a pre-0.8.0 database stops at 0001 for `migrateAuth` to run the round
+  // trip for real.
+  1: ISSUER_ROUND_TRIP,
+  2: ISSUER_ROUND_TRIP,
 }
 
-type BaselineEffectCheck = (typeof BASELINE_EFFECT_CHECKS)[number]
+/** The last migration position measured against `check`. Positions sharing one
+ *  check are all probed for the shape the last of them produces, so that is the
+ *  migration to name when the database does not have it. */
+function lastPositionOn(check: BaselineEffectCheck): number {
+  return Math.max(
+    ...Object.entries(BASELINE_EFFECT_CHECKS)
+      .filter(([, entry]) => entry === check)
+      .map(([position]) => Number(position)),
+  )
+}
 
 async function exists(db: Db, query: ReturnType<typeof sql>): Promise<boolean> {
   const rows = await db.execute(query)
@@ -55,48 +89,61 @@ async function exists(db: Db, query: ReturnType<typeof sql>): Promise<boolean> {
 }
 
 interface MissingEffect {
-  /** The migration's column is absent, so nothing of it ran. */
-  columnAbsent: boolean
+  /**
+   * Nothing of this shape is in place yet, so `migrateAuth` can still run the
+   * migrations that produce it from the top. False means some of it is there
+   * and some is not, which only a human can untangle.
+   */
+  untouched: boolean
   /** Human-readable list of every part that is absent. Empty means fully applied. */
   missing: string[]
 }
 
 /**
- * Which parts of a migration's effect the database does NOT already have.
- * `missing` empty means the migration is fully applied and safe to record.
+ * Which parts of the expected shape the database does NOT already have.
+ * `missing` empty means the migrations up to this position are fully applied
+ * and safe to record.
  */
 async function missingEffect(db: Db, check: BaselineEffectCheck): Promise<MissingEffect> {
   const missing: string[] = []
-  let columnAbsent = false
+  let untouched = true
 
-  const columns = await db.execute(sql`
-    SELECT is_nullable
-      FROM information_schema.columns
-     WHERE table_schema = 'public'
-       AND table_name = ${check.table}
-       AND column_name = ${check.column}
-     LIMIT 1
-  `)
-  const column = (columns as unknown as Array<{ is_nullable: string }>)[0]
-  if (!column) {
-    columnAbsent = true
-    missing.push(`column "${check.table}"."${check.column}"`)
-  } else if (check.notNull && column.is_nullable !== "NO") {
-    missing.push(`NOT NULL on "${check.table}"."${check.column}"`)
+  if (check.absentColumn) {
+    const column = await exists(
+      db,
+      sql`
+      SELECT 1
+        FROM information_schema.columns
+       WHERE table_schema = 'public'
+         AND table_name = ${check.table}
+         AND column_name = ${check.absentColumn}
+       LIMIT 1
+    `,
+    )
+    if (column) {
+      // The column is still there, so the migration that drops it has not run —
+      // and neither, therefore, has the one that added it been undone. Running
+      // the group from the top would try to add a column that already exists.
+      untouched = false
+      missing.push(`removal of column "${check.table}"."${check.absentColumn}"`)
+    }
   }
 
   if (check.index) {
-    const index = sql`
+    const index = await exists(
+      db,
+      sql`
       SELECT 1
         FROM pg_indexes
        WHERE schemaname = 'public'
          AND indexname = ${check.index}
        LIMIT 1
-    `
-    if (!(await exists(db, index))) missing.push(`index "${check.index}"`)
+    `,
+    )
+    if (!index) missing.push(`index "${check.index}"`)
   }
 
-  return { columnAbsent, missing }
+  return { untouched, missing }
 }
 
 /**
@@ -215,7 +262,7 @@ export async function baselineAuth(
   for (const [index, migration] of migrations.entries()) {
     const check = BASELINE_EFFECT_CHECKS[index]
     if (check) {
-      const { columnAbsent, missing } = await missingEffect(db, check)
+      const { untouched, missing } = await missingEffect(db, check)
       // Some of the migration ran and some did not — most often an operator who
       // added the column by hand from better-auth's upgrade guide and never
       // created the index. Recording it would leave the missing half missing
@@ -223,17 +270,24 @@ export async function baselineAuth(
       // statement re-adds a column that is already there. Only a human can
       // decide, so say exactly what is absent and stop.
       if (missing.length > 0) {
-        if (!columnAbsent) {
+        if (!untouched) {
+          // `index` is where the walk stopped, which is not the shape being
+          // probed: 0001 adds `issuer` and 0002 drops it, so both positions are
+          // measured against what 0002 leaves. A database that ran 0001 and
+          // nothing else matches 0000..0001 exactly — naming that range would
+          // call it wrong. Name the last position on this check instead.
+          const tag = String(lastPositionOn(check)).padStart(4, "0")
           throw new Error(
-            `[@naeemba/next-starter] Refusing to baseline: migration ${index} is ` +
-              `only partly applied to this database.\n` +
+            `[@naeemba/next-starter] Refusing to baseline: the schema does not ` +
+              `match what migrations 0000..${tag} produce.\n` +
               `  Missing: ${missing.join(", ")}.\n` +
-              `  baseline records a migration as already-applied without running ` +
-              `its DDL, so recording this one would leave the missing part missing ` +
-              `for good — and \`migrate\` cannot apply it either, because the part ` +
+              `  baseline records migrations as already-applied without running ` +
+              `their DDL, so recording these would leave the missing part missing ` +
+              `for good — and \`migrate\` cannot apply them either, because the part ` +
               `that IS present would make its first statement fail.\n` +
-              `  Create the missing object(s) by hand, then re-run ` +
-              `\`next-starter migrate baseline\`. See UPGRADING.md.`,
+              `  Apply by hand the SQL that produces the missing part(s) above — ` +
+              `here, \`${tag}\` — then re-run \`next-starter migrate baseline\`. ` +
+              `See UPGRADING.md.`,
           )
         }
         pending = migrations.length - index
