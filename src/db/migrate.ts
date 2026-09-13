@@ -67,6 +67,17 @@ export const BASELINE_EFFECT_CHECKS: Record<number, BaselineEffectCheck> = {
   2: ISSUER_ROUND_TRIP,
 }
 
+/** The last migration position measured against `check`. Positions sharing one
+ *  check are all probed for the shape the last of them produces, so that is the
+ *  migration to name when the database does not have it. */
+function lastPositionOn(check: BaselineEffectCheck): number {
+  return Math.max(
+    ...Object.entries(BASELINE_EFFECT_CHECKS)
+      .filter(([, entry]) => entry === check)
+      .map(([position]) => Number(position)),
+  )
+}
+
 async function exists(db: Db, query: ReturnType<typeof sql>): Promise<boolean> {
   const rows = await db.execute(query)
   return (rows as unknown as unknown[]).length > 0
@@ -255,12 +266,12 @@ export async function baselineAuth(
       // decide, so say exactly what is absent and stop.
       if (missing.length > 0) {
         if (!untouched) {
-          // An entry is cumulative, so `index` is where the walk stopped, not the
-          // migration that is missing — migration 1 can be fully applied and 2
-          // not at all, and both are checked against the same end shape. Say
-          // what the probe actually knows: the schema is not what migrations
-          // 0000..tag produce, and here is the part that is off.
-          const tag = String(index).padStart(4, "0")
+          // `index` is where the walk stopped, which is not the shape being
+          // probed: 0001 adds `issuer` and 0002 drops it, so both positions are
+          // measured against what 0002 leaves. A database that ran 0001 and
+          // nothing else matches 0000..0001 exactly — naming that range would
+          // call it wrong. Name the last position on this check instead.
+          const tag = String(lastPositionOn(check)).padStart(4, "0")
           throw new Error(
             `[@naeemba/next-starter] Refusing to baseline: the schema does not ` +
               `match what migrations 0000..${tag} produce.\n` +
@@ -269,9 +280,9 @@ export async function baselineAuth(
               `their DDL, so recording these would leave the missing part missing ` +
               `for good — and \`migrate\` cannot apply them either, because the part ` +
               `that IS present would make its first statement fail.\n` +
-              `  Apply the remaining migration SQL by hand — the files in ` +
-              `\`migrations/\` through ${tag} — then re-run ` +
-              `\`next-starter migrate baseline\`. See UPGRADING.md.`,
+              `  Apply by hand the SQL that produces the missing part(s) above — ` +
+              `here, \`${tag}\` — then re-run \`next-starter migrate baseline\`. ` +
+              `See UPGRADING.md.`,
           )
         }
         pending = migrations.length - index

@@ -62,11 +62,16 @@ refuses rather than handing a database that still has `issuer` to `migrate`,
 which would fail re-adding a column that is already there:
 
 ```
-ERROR: Refusing to baseline: the schema does not match what migrations 0000..0001 produce.
+ERROR: Refusing to baseline: the schema does not match what migrations 0000..0002 produce.
   Missing: removal of column "account"."issuer", index "account_provider_id_account_id_idx".
+  ...
+  Apply by hand the SQL that produces the missing part(s) above — here, `0002` —
+  then re-run `next-starter migrate baseline`.
 ```
 
-Apply `0002`'s SQL by hand, then re-run `next-starter migrate baseline`.
+That is `0002`'s SQL: it drops `issuer` and creates the
+`(provider_id, account_id)` index. `0001` must NOT be re-run — its first
+statement adds a column your database already has.
 
 ## 0.10.x → 0.11.0
 
