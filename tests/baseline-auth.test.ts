@@ -165,7 +165,7 @@ describeWithDatabase("baselineAuth (integration)", () => {
     await db.execute(sql`DROP SCHEMA IF EXISTS drizzle CASCADE`)
 
     await expect(baselineAuth(db)).rejects.toThrow(
-      /only partly applied.*removal of column "account"\."issuer".*account_provider_id_account_id_idx/s,
+      /does not match what migrations 0000\.\.0001 produce.*removal of column "account"\."issuer".*account_provider_id_account_id_idx/s,
     )
 
     // Nothing was recorded, so applying the missing half by hand — 0002 itself —

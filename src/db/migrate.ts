@@ -255,15 +255,22 @@ export async function baselineAuth(
       // decide, so say exactly what is absent and stop.
       if (missing.length > 0) {
         if (!untouched) {
+          // An entry is cumulative, so `index` is where the walk stopped, not the
+          // migration that is missing — migration 1 can be fully applied and 2
+          // not at all, and both are checked against the same end shape. Say
+          // what the probe actually knows: the schema is not what migrations
+          // 0..index produce, and here is the part that is off.
+          const tag = String(index).padStart(4, "0")
           throw new Error(
-            `[@naeemba/next-starter] Refusing to baseline: migration ${index} is ` +
-              `only partly applied to this database.\n` +
+            `[@naeemba/next-starter] Refusing to baseline: the schema does not ` +
+              `match what migrations 0000..${tag} produce.\n` +
               `  Missing: ${missing.join(", ")}.\n` +
-              `  baseline records a migration as already-applied without running ` +
-              `its DDL, so recording this one would leave the missing part missing ` +
-              `for good — and \`migrate\` cannot apply it either, because the part ` +
+              `  baseline records migrations as already-applied without running ` +
+              `their DDL, so recording these would leave the missing part missing ` +
+              `for good — and \`migrate\` cannot apply them either, because the part ` +
               `that IS present would make its first statement fail.\n` +
-              `  Create the missing object(s) by hand, then re-run ` +
+              `  Apply the remaining migration SQL by hand — the files in ` +
+              `\`migrations/\` through ${tag} — then re-run ` +
               `\`next-starter migrate baseline\`. See UPGRADING.md.`,
           )
         }

@@ -49,7 +49,7 @@ refuses rather than handing a database that still has `issuer` to `migrate`,
 which would fail re-adding a column that is already there:
 
 ```
-ERROR: Refusing to baseline: migration 1 is only partly applied to this database.
+ERROR: Refusing to baseline: the schema does not match what migrations 0000..0001 produce.
   Missing: removal of column "account"."issuer", index "account_provider_id_account_id_idx".
 ```
 
