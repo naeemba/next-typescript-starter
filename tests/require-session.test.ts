@@ -27,6 +27,17 @@ describe("createServer(auth)", () => {
     await expect(requireSession({ redirectTo: "/login" })).rejects.toThrow("__REDIRECT__/login")
   })
 
+  it.each(["//evil.com", "/\\evil.com", "/\t/evil.com", "https://evil.com"])(
+    "requireSession ignores an unsafe redirectTo (%j) and falls back to /sign-in",
+    async (redirectTo) => {
+      const fakeAuth = { api: { getSession: async () => null } } as any
+      const { createServer } = await import("../src/server/index")
+      const { requireSession } = createServer(fakeAuth)
+      await expect(requireSession({ redirectTo })).rejects.toThrow("__REDIRECT__/sign-in")
+      expect(redirectSpy).toHaveBeenCalledWith("/sign-in")
+    },
+  )
+
   it("requireSession returns session when present", async () => {
     const fakeSession = { user: { id: "u_1", email: "a@b.com" }, session: { id: "s_1" } }
     const fakeAuth = { api: { getSession: async () => fakeSession } } as any

@@ -185,6 +185,13 @@ describe("<SignInForm/> passkey prop", () => {
       await waitFor(() => expect(assignMock).toHaveBeenCalledWith("/studio"))
     })
 
+    it("drops an encoded-tab ?callbackUrl= and navigates to the prop instead", async () => {
+      window.history.replaceState({}, "", "/sign-in?callbackUrl=/%09/evil.com")
+      render(<SignInForm authClient={makeClient()} passkey callbackUrl="/dashboard" />)
+      fireEvent.click(await screen.findByRole("button", { name: /sign in with passkey/i }))
+      await waitFor(() => expect(assignMock).toHaveBeenCalledWith("/dashboard"))
+    })
+
     it("does NOT auto-navigate when onSignedIn is provided (consumer owns navigation)", async () => {
       const onSignedIn = vi.fn()
       render(<SignInForm authClient={makeClient()} passkey onSignedIn={onSignedIn} callbackUrl="/dashboard" />)
