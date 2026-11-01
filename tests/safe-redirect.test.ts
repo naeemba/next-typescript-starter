@@ -52,6 +52,8 @@ describe("toSafeRelativePath", () => {
     ["encoded dot segment", "/%2e//evil.com"],
     ["encoded dot-dot segment", "/%2E%2E//evil.com"],
     ["dot-dot onto an encoded second slash", "/a/%2e%2e/%2fevil.com"],
+    ["encoded slash inside a segment", "/docs/a%2Fb"],
+    ["dot-dot then encoded slash", "/..%2f/evil.com"],
     ["empty", ""],
   ])("rejects %s", (_, value) => {
     expect(toSafeRelativePath(value)).toBeNull()

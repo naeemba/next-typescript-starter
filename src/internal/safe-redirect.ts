@@ -25,8 +25,13 @@ function isPlainRelativePath(value: string): boolean {
 
 function isSafeRelativePath(value: string): boolean {
   if (!isPlainRelativePath(value)) return false
+  const rawPath = value.replace(/[?#].*/s, "")
+  // better-auth refuses a callback whose path holds an encoded slash or
+  // backslash, so `/docs/a%2Fb` would fail sign-in outright instead of
+  // falling back to "/". Reject it here to match.
+  if (/%2f|%5c/i.test(rawPath)) return false
   try {
-    return isPlainRelativePath(decodeURIComponent(value.replace(/[?#].*/s, "")))
+    return isPlainRelativePath(decodeURIComponent(rawPath))
   } catch {
     return false
   }
