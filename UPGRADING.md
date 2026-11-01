@@ -14,7 +14,9 @@ migrate` still works, but the first `db` access fails on every request:
   Used by: the createDb client (DATABASE_URL)
 ```
 
-Upgrade Node. postgres 3 keeps working on any supported Node.
+Upgrade Node. If you can't upgrade Node yet, stay on postgres 3. Its CommonJS
+build loads on any Node 20+, but npm will warn that this package needs 20.19+ /
+22.12+.
 
 ### Magic links issued before the upgrade stop working
 
