@@ -16,17 +16,18 @@ export default defineConfig({
     "proxy/index":                 "src/proxy/index.ts",
   },
   format: ["esm"],
-  // This is what pins typescript to 6.x. TypeScript 7 type-checks the package
-  // fine but ships no JavaScript compiler API, and tsup vendors
-  // rollup-plugin-dts 6.1.1 — built against typescript 5.7 — inside its own
-  // bundle, where an npm override cannot reach it. On 7.0.2 this step dies
-  // with "Cannot read properties of undefined (reading
-  // 'useCaseSensitiveFileNames')" and takes the whole build with it, so there
-  // is no dist at all, not just no types.
+  // This is why `typescript` in package.json is an alias for
+  // @typescript/typescript6 while `tsc` comes from @typescript/native
+  // (typescript 7). TypeScript 7 ships no JavaScript compiler API, and this
+  // step needs one: tsup reads the tsconfig through `import "typescript"`
+  // itself, before its vendored rollup-plugin-dts gets a chance to fall back
+  // to @typescript/typescript6. With plain typescript 7 installed the step
+  // dies with "parseJsonConfigFileContent is not a function" after the JS
+  // build, and the package ships without types.
   //
-  // rollup-plugin-dts 6.5.1 already declares typescript ^7. Retry the bump
-  // when a tsup release vendors it. Last checked against tsup 8.5.1 and
-  // typescript 7.0.2 on 2026-09-13.
+  // Drop the alias when tsup works against typescript 7's own API (expected
+  // in 7.1). Last checked against tsup 9.0.0 and typescript 7.0.2 on
+  // 2026-11-01.
   dts: true,
   sourcemap: true,
   clean: true,
