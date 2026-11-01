@@ -20,6 +20,7 @@ vi.mock("drizzle-orm/postgres-js", () => ({
 }))
 
 import { createDb } from "../src/db/index"
+import { loadOptionalPeer } from "../src/internal/optional-peer"
 
 const URL = "postgres://u:p@h:5432/d"
 
@@ -63,5 +64,21 @@ describe("createDb → postgres() passthrough", () => {
       URL,
       expect.objectContaining({ max: 25 }),
     )
+  })
+})
+
+describe("createDb → postgres module shape", () => {
+  // postgres 3's CommonJS build is the factory; postgres 4 is ESM-only, so
+  // createRequire hands back a namespace with the factory on `default`. The
+  // peer range allows both, and calling the wrong one throws on every createDb.
+  it("calls the factory whether the peer is postgres 3's CommonJS export or postgres 4's ESM namespace", () => {
+    vi.mocked(loadOptionalPeer)
+      .mockReturnValueOnce(postgresSpy)
+      .mockReturnValueOnce({ default: postgresSpy })
+    createDb(URL)
+    createDb(URL)
+    expect(postgresSpy).toHaveBeenCalledTimes(2)
+    expect(postgresSpy).toHaveBeenNthCalledWith(1, URL, expect.anything())
+    expect(postgresSpy).toHaveBeenNthCalledWith(2, URL, expect.anything())
   })
 })

@@ -68,16 +68,17 @@ describe("optional-peer loader", () => {
 
   // Regression: the "installed but cannot be loaded the way we tried"
   // branch was added without a test. It's distinct from "not installed" —
-  // `npm i` won't fix an ESM-only peer being require()'d in Node 20, or a
-  // subpath that isn't in the package's `exports` map. The error message
+  // `npm i` won't fix an ESM-only peer being require()'d on a Node older
+  // than 20.19 / 22.12, or a subpath that isn't in the package's `exports`
+  // map. The error message
   // must say "installed but failed to load" and surface the underlying
   // Node code, NOT the misleading install hint.
   //
   // Use synthetic CJS throwers (a module whose body assigns `err.code` and
   // throws at require time) instead of "build a real ESM-only package and
-  // hope Node's require(ESM) interop doesn't paper over it". Node 22+ has
-  // unflagged require(ESM) interop and would silently succeed; a synthetic
-  // thrower exercises the loader's classifier directly and is Node-version
+  // hope Node's require(ESM) interop doesn't paper over it". Node 20.19+ and
+  // 22.12+ have unflagged require(ESM) interop and would silently succeed; a
+  // synthetic thrower exercises the loader's classifier directly and is Node-version
   // independent.
   it("throws an 'installed but failed to load' error for ERR_REQUIRE_ESM", async () => {
     const { writeFileSync, mkdtempSync, rmSync } = await import("node:fs")
@@ -87,8 +88,8 @@ describe("optional-peer loader", () => {
 
     const dir = mkdtempSync(join(tmpdir(), "ns-peer-esm-"))
     const file = join(dir, "esm-thrower.cjs")
-    // Synthesize the exact error Node 20 throws when require() hits an
-    // ESM-only module: a real Error with `code = "ERR_REQUIRE_ESM"`. The
+    // Synthesize the exact error a Node older than 20.19 / 22.12 throws when
+    // require() hits an ESM-only module: a real Error with `code = "ERR_REQUIRE_ESM"`. The
     // loader keys off `err.code`, not the message, so this is the same
     // shape it would see from a real ESM-only peer in CI.
     writeFileSync(
