@@ -111,7 +111,7 @@ export default function Page() {
 }
 ```
 
-`SignInPage` reads `?callbackUrl=` from the URL query string and forwards it as the post-sign-in redirect (falling back to the `callbackUrl` prop, then `"/"`). Cross-origin and protocol-relative values are dropped silently to prevent open-redirect abuse. Set `callbackParam` to use a different query name. Set `errorCallbackUrl` to redirect to a friendly page when the magic-link verify endpoint fails — see the [SignInErrorPage](#magic-link-error-pages) recipe below.
+`SignInPage` reads `?callbackUrl=` from the URL query string and forwards it as the post-sign-in redirect (falling back to the `callbackUrl` prop, then `"/"`). Only a same-origin relative path is followed (from the query or the prop); absolute URLs, `//host`, `/\host` and values carrying a tab, newline or backslash are dropped silently to prevent open-redirect abuse. Set `callbackParam` to use a different query name. Set `errorCallbackUrl` to redirect to a friendly page when the magic-link verify endpoint fails — see the [SignInErrorPage](#magic-link-error-pages) recipe below.
 
 ### app/sign-in/error/page.tsx
 

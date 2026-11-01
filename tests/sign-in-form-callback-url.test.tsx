@@ -76,19 +76,21 @@ describe("<SignInForm/> callbackUrl resolution", () => {
     expect(magicLink).toHaveBeenCalledWith({ email: "a@example.com", callbackURL: "/from-prop" })
   })
 
-  // Defense-in-depth: a phisher can craft /sign-in?callbackUrl=https://evil.com
-  // and rely on better-auth's trustedOrigins not being configured strictly.
-  // The form silently drops non-same-origin values and falls back to the prop / "/".
+  // A phisher crafts /sign-in?callbackUrl=<value> and relies on the user
+  // trusting the real sign-in page. Each value is the raw query-string form,
+  // so `/%09/evil.com` exercises the browser's decode-then-strip-tab path.
   describe.each([
-    ["//evil.com", "protocol-relative bypass"],
-    ["/\\evil.com", "backslash bypass"],
-    ["https://evil.com/x", "cross-origin absolute URL"],
-    ["javascript:alert(1)", "javascript: scheme"],
-    ["data:text/html,x", "data: scheme"],
-  ])("rejects unsafe callbackUrl '%s' (%s)", (badValue) => {
+    ["/%09/evil.com", "encoded tab bypass"],
+    ["/%0A/evil.com", "encoded newline bypass"],
+    ["/%5Cevil.com", "encoded backslash bypass"],
+    ["/%252F/evil.com", "double-encoded second slash"],
+    ["%2F%2Fevil.com", "protocol-relative bypass"],
+    ["https%3A%2F%2Fapp.test%40evil.com%2F", "userinfo absolute URL"],
+    ["javascript%3Aalert(1)", "javascript: scheme"],
+  ])("rejects unsafe callbackUrl '%s' (%s)", (badQueryValue) => {
     it("falls back to the prop", async () => {
       const { authClient, magicLink } = makeAuthClient()
-      window.history.replaceState({}, "", `/sign-in?callbackUrl=${encodeURIComponent(badValue)}`)
+      window.history.replaceState({}, "", `/sign-in?callbackUrl=${badQueryValue}`)
       render(<SignInForm authClient={authClient} callbackUrl="/safe" />)
       await submitWithEmail("a@example.com")
       await waitFor(() => expect(magicLink).toHaveBeenCalled())
@@ -96,15 +98,42 @@ describe("<SignInForm/> callbackUrl resolution", () => {
     })
   })
 
-  it("accepts a same-origin absolute URL (production proxy round-trip case)", async () => {
+  it("rejects a same-origin absolute URL: only relative paths are followed", async () => {
     const { authClient, magicLink } = makeAuthClient()
-    // jsdom defaults window.location.origin to http://localhost:3000
     const sameOriginAbsolute = `${window.location.origin}/admin`
     window.history.replaceState({}, "", `/sign-in?callbackUrl=${encodeURIComponent(sameOriginAbsolute)}`)
-    render(<SignInForm authClient={authClient} callbackUrl="/decoy" />)
+    render(<SignInForm authClient={authClient} callbackUrl="/fallback" />)
     await submitWithEmail("a@example.com")
     await waitFor(() => expect(magicLink).toHaveBeenCalled())
-    expect(magicLink).toHaveBeenCalledWith({ email: "a@example.com", callbackURL: sameOriginAbsolute })
+    expect(magicLink).toHaveBeenCalledWith({ email: "a@example.com", callbackURL: "/fallback" })
+  })
+
+  it("drops an unsafe callbackUrl prop too and falls back to '/'", async () => {
+    const { authClient, magicLink } = makeAuthClient()
+    render(<SignInForm authClient={authClient} callbackUrl={"/\t/evil.com"} />)
+    await submitWithEmail("a@example.com")
+    await waitFor(() => expect(magicLink).toHaveBeenCalled())
+    expect(magicLink).toHaveBeenCalledWith({ email: "a@example.com", callbackURL: "/" })
+  })
+
+  it("forwards a safe errorCallbackUrl", async () => {
+    const { authClient, magicLink } = makeAuthClient()
+    render(<SignInForm authClient={authClient} errorCallbackUrl="/sign-in/error" />)
+    await submitWithEmail("a@example.com")
+    await waitFor(() => expect(magicLink).toHaveBeenCalled())
+    expect(magicLink).toHaveBeenCalledWith({
+      email: "a@example.com",
+      callbackURL: "/",
+      errorCallbackURL: "/sign-in/error",
+    })
+  })
+
+  it("drops an unsafe errorCallbackUrl", async () => {
+    const { authClient, magicLink } = makeAuthClient()
+    render(<SignInForm authClient={authClient} errorCallbackUrl="//evil.com" />)
+    await submitWithEmail("a@example.com")
+    await waitFor(() => expect(magicLink).toHaveBeenCalled())
+    expect(magicLink).toHaveBeenCalledWith({ email: "a@example.com", callbackURL: "/" })
   })
 
   it("passes the resolved URL through to social sign-in too", async () => {

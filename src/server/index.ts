@@ -1,10 +1,12 @@
 import { headers } from "next/headers"
 import { redirect } from "next/navigation"
 import type { Auth } from "better-auth"
+import { toSafeRelativePath } from "../internal/safe-redirect.js"
 
 export type Session = NonNullable<Awaited<ReturnType<Auth["api"]["getSession"]>>>
 
 export interface RequireSessionOptions {
+  /** Same-origin relative path. Anything else falls back to `/sign-in`. */
   redirectTo?: string
 }
 
@@ -16,7 +18,7 @@ export function createServer(auth: Auth) {
   async function requireSession(opts: RequireSessionOptions = {}): Promise<Session> {
     const session = await getSession()
     if (!session) {
-      redirect(opts.redirectTo ?? "/sign-in")
+      redirect(toSafeRelativePath(opts.redirectTo) ?? "/sign-in")
     }
     return session
   }
