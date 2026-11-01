@@ -31,7 +31,13 @@ export function createDb(databaseUrl: string, opts: CreateDbOptions = {}): Db {
       "[@naeemba/next-starter] createDb requires a non-empty DATABASE_URL connection string."
     )
   }
-  const pg = loadOptionalPeer<typeof postgres>("postgres", "the createDb client (DATABASE_URL)")
+  // postgres 4 is ESM-only, so `require` hands back the module namespace and
+  // the factory sits on `default`; postgres 3's CommonJS build is the factory.
+  const peer = loadOptionalPeer<typeof postgres | { default: typeof postgres }>(
+    "postgres",
+    "the createDb client (DATABASE_URL)",
+  )
+  const pg = "default" in peer ? peer.default : peer
   const client = pg(databaseUrl, {
     prepare: opts.prepare ?? true,
     max: opts.max ?? 10,
