@@ -185,8 +185,8 @@ describe("<SignInForm/> passkey prop", () => {
       await waitFor(() => expect(assignMock).toHaveBeenCalledWith("/studio"))
     })
 
-    it("drops an encoded-tab ?callbackUrl= and navigates to the prop instead", async () => {
-      window.history.replaceState({}, "", "/sign-in?callbackUrl=/%09/evil.com")
+    it.each(["/%09/evil.com", "/.//evil.com"])("drops ?callbackUrl=%s and navigates to the prop instead", async (callback) => {
+      window.history.replaceState({}, "", `/sign-in?callbackUrl=${callback}`)
       render(<SignInForm authClient={makeClient()} passkey callbackUrl="/dashboard" />)
       fireEvent.click(await screen.findByRole("button", { name: /sign in with passkey/i }))
       await waitFor(() => expect(assignMock).toHaveBeenCalledWith("/dashboard"))
