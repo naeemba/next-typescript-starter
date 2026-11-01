@@ -27,16 +27,15 @@ describe("createServer(auth)", () => {
     await expect(requireSession({ redirectTo: "/login" })).rejects.toThrow("__REDIRECT__/login")
   })
 
-  it.each(["//evil.com", "/\\evil.com", "/\t/evil.com", "https://evil.com"])(
-    "requireSession ignores an unsafe redirectTo (%j) and falls back to /sign-in",
-    async (redirectTo) => {
-      const fakeAuth = { api: { getSession: async () => null } } as any
-      const { createServer } = await import("../src/server/index")
-      const { requireSession } = createServer(fakeAuth)
-      await expect(requireSession({ redirectTo })).rejects.toThrow("__REDIRECT__/sign-in")
-      expect(redirectSpy).toHaveBeenCalledWith("/sign-in")
-    },
-  )
+  // The full bypass matrix lives in safe-redirect.test.ts; this only proves
+  // requireSession routes redirectTo through the guard.
+  it("requireSession ignores an unsafe redirectTo and falls back to /sign-in", async () => {
+    const fakeAuth = { api: { getSession: async () => null } } as any
+    const { createServer } = await import("../src/server/index")
+    const { requireSession } = createServer(fakeAuth)
+    await expect(requireSession({ redirectTo: "/\t/evil.com" })).rejects.toThrow("__REDIRECT__/sign-in")
+    expect(redirectSpy).toHaveBeenCalledWith("/sign-in")
+  })
 
   it("requireSession returns session when present", async () => {
     const fakeSession = { user: { id: "u_1", email: "a@b.com" }, session: { id: "s_1" } }

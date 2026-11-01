@@ -36,11 +36,8 @@ export function toSafeRelativePath(value: string | null | undefined): string | n
     return null
   }
   if (!isPlainRelativePath(decoded)) return null
-  try {
-    const parsed = new URL(value, PLACEHOLDER_ORIGIN)
-    if (parsed.origin !== PLACEHOLDER_ORIGIN) return null
-    return parsed.pathname + parsed.search + parsed.hash
-  } catch {
-    return null
-  }
+  // Cannot throw: a root-relative path always parses against a valid base.
+  const parsed = new URL(value, PLACEHOLDER_ORIGIN)
+  if (parsed.origin !== PLACEHOLDER_ORIGIN) return null
+  return parsed.pathname + parsed.search + parsed.hash
 }

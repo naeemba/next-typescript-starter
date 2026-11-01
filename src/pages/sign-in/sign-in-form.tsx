@@ -130,15 +130,9 @@ export interface SignInFormProps {
 type Status = "idle" | "sending" | "sent" | "error"
 type MethodStatus = { magicLink: Status; google: Status; passkey: Status }
 
-// Open-redirect defense. The query-string value travels from
-// /sign-in?callbackUrl=... to better-auth's signIn call, which echoes it back
-// in the post-auth redirect. better-auth's `trustedOrigins` is the
-// authoritative gate, but a phisher can still craft
-// https://app.example.com/sign-in?callbackUrl=/%09/evil.com and send the user
-// off-site after a genuine sign-in. The query value and the `callbackUrl`
-// prop (often fed from searchParams by the consumer) both go through
-// `toSafeRelativePath`; anything that is not a same-origin relative path is
-// dropped and resolution falls through to the next source, then "/".
+// The query value travels to better-auth's signIn call and comes back as the
+// post-auth redirect. Both it and the prop (often fed from searchParams) go
+// through the shared open-redirect guard; see internal/safe-redirect.ts.
 function resolveCallbackUrl(callbackParam: string, propValue: string | undefined): string {
   const fromQuery =
     typeof window === "undefined"
