@@ -24,9 +24,10 @@ function isModuleNotFound(err: unknown): boolean {
 }
 
 // Distinct from "not installed": the peer IS reachable but cannot be
-// loaded via the path we tried. ERR_REQUIRE_ESM = peer ships ESM-only
-// (realistic for resend / @react-email/* in a future major) and was
-// reached via createRequire — needs the async helper instead.
+// loaded via the path we tried. ERR_REQUIRE_ESM = peer ships ESM-only and
+// was reached via createRequire on a Node older than 20.19 / 22.12, which
+// cannot require() an ES module. Those versions load ESM-only peers
+// synchronously, and the engines floor requires them.
 // ERR_PACKAGE_PATH_NOT_EXPORTED = the bare specifier doesn't match the
 // peer's `exports` map — caller picked the wrong subpath.
 // Either is a code-level mismatch; consumers can't fix it with `npm i`,

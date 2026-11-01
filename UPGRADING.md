@@ -1,5 +1,30 @@
 # Upgrading
 
+## 0.12.x → 0.13.0
+
+### Node 20.19+ or 22.12+ is now required
+
+`engines.node` is now `^20.19.0 || >=22.12.0`. postgres 4 ships ESM-only, and
+`createDb` loads it synchronously through `require()`, which Node only supports
+for ES modules from 20.19.0 and 22.12.0. On an older Node, `next-starter
+migrate` still works, but the first `db` access fails on every request:
+
+```
+[@naeemba/next-starter] Optional peer 'postgres' is installed but failed to load.
+  Used by: the createDb client (DATABASE_URL)
+```
+
+Upgrade Node. postgres 3 keeps working on any supported Node.
+
+### Magic links issued before the upgrade stop working
+
+The better-auth floor is now 1.7.15, which includes 1.7.7's change to how
+magic-link tokens are stored
+([GHSA-965c-763c-88jm](https://github.com/better-auth/better-auth/security/advisories/GHSA-965c-763c-88jm)).
+A link requested before you deploy no longer matches after it, and lands on
+the sign-in error page. No migration is needed; affected users request a new
+link. Links issued after the deploy work normally.
+
 ## 0.11.x → 0.12.0
 
 ### better-auth 1.7.3 reverted `account.issuer` (new migration, action required)
