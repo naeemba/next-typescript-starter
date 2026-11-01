@@ -2,6 +2,17 @@
 
 All notable changes to `@naeemba/next-starter`. Migration steps live in [UPGRADING.md](./UPGRADING.md).
 
+## [0.13.0](https://github.com/naeemba/next-typescript-starter/compare/v0.12.0...v0.13.0) (2026-11-01)
+
+### ⚠ BREAKING CHANGES
+
+* `engines.node` is now `^20.19.0 || >=22.12.0`. postgres 4 is ESM-only, and `createDb` loads it through `require()`, which Node supports for ES modules only from 20.19.0 and 22.12.0. See UPGRADING.md.
+* better-auth floor raised to 1.7.15. 1.7.7 changed how magic-link tokens are stored ([GHSA-965c-763c-88jm](https://github.com/better-auth/better-auth/security/advisories/GHSA-965c-763c-88jm)), so magic links issued before the upgrade stop working; users request a new one. No migration needed.
+
+### Bug Fixes
+
+* **db:** load postgres 4's ESM-only build in createDb ([5e6d400](https://github.com/naeemba/next-typescript-starter/commit/5e6d400ae8f42fc1244bf54433df32c75f92d6f0))
+* require Node 20.19+/22.12+ for postgres 4 and document the upgrade ([6d4697e](https://github.com/naeemba/next-typescript-starter/commit/6d4697e9db0e857d851dce58bfb7fae9ed79a66b))
 ## [0.12.0](https://github.com/naeemba/next-typescript-starter/compare/v0.11.0...v0.12.0) (2026-09-13)
 
 ### ⚠ BREAKING CHANGES
