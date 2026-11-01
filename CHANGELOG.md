@@ -2,6 +2,15 @@
 
 All notable changes to `@naeemba/next-starter`. Migration steps live in [UPGRADING.md](./UPGRADING.md).
 
+## [0.13.1](https://github.com/naeemba/next-typescript-starter/compare/v0.13.0...v0.13.1) (2026-11-01)
+
+### Security
+
+* Open redirect in `SignInForm` / `SignInPage`: `?callbackUrl=/%09/evil.com` got past the callback guard, and after a genuine sign-in the browser stripped the tab and navigated to `//evil.com`. The query value, the `callbackUrl` and `errorCallbackUrl` props, the passkey fallback navigation and `requireSession({ redirectTo })` now accept only a same-origin relative path. A same-origin absolute `callbackUrl` (`https://app.example.com/admin`) is no longer followed and falls back to the prop or `"/"`; `createProxy` only emits relative paths, so the proxy round-trip is unaffected.
+
+### Bug Fixes
+
+* **sign-in:** reject every non-relative callback URL, including /%09/evil.com ([2eb1014](https://github.com/naeemba/next-typescript-starter/commit/2eb1014389996e89533e3f3122f173e26a1c2908))
 ## [0.13.0](https://github.com/naeemba/next-typescript-starter/compare/v0.12.0...v0.13.0) (2026-11-01)
 
 ### ⚠ BREAKING CHANGES
