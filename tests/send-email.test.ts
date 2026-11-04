@@ -121,7 +121,7 @@ describe("sendEmail", () => {
   // The plain-text part derived from `html` used to come from
   // `/<[^>]*>/g`, which rescans to the end of the input from every unclosed
   // `<`: quadratic on "<<<<…". Before the fix, 100k of them took about 4.5 seconds.
-  describe("sendEmail plain text derived from html", () => {
+  describe("plain text derived from html", () => {
     async function textFor(html: string): Promise<string> {
       delete process.env.RESEND_API_KEY
       process.env.EMAIL_FROM = "auth@example.com"
