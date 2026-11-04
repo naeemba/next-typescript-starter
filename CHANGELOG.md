@@ -2,6 +2,18 @@
 
 All notable changes to `@naeemba/next-starter`. Migration steps live in [UPGRADING.md](./UPGRADING.md).
 
+## [0.13.2](https://github.com/naeemba/next-typescript-starter/compare/v0.13.1...v0.13.2) (2026-11-04)
+
+### Security
+
+* Polynomial-time regexes (ReDoS) in `createProxy` and `sendEmail`. The proxy stripped trailing slashes with `/\/+$/`, so a request to a path of many slashes followed by one more character (`/` × 100,000 then `x`) held the request for about 4.5 seconds, in every app that mounts the proxy. `sendEmail` derived the plain-text part from `html` with `/<[^>]*>/g`, which took as long on a body of many unclosed `<`. Both now use a linear scan with the same output on every input. The Postal transport's `POSTAL_API_URL` normalisation used the same slash regex and shares the new helper.
+* CI and release workflows now run with least-privilege `GITHUB_TOKEN` permissions.
+
+### Bug Fixes
+
+* **email:** derive plain text from html with a linear tag scan ([068c6b3](https://github.com/naeemba/next-typescript-starter/commit/068c6b337946a85d9b1bbdc56c66537f011087e6))
+* **proxy:** strip trailing slashes with a linear scan, not /\/+$/ ([1fa0f27](https://github.com/naeemba/next-typescript-starter/commit/1fa0f273cce56f777ef533a546c36f73f700ab76))
+
 ## [0.13.1](https://github.com/naeemba/next-typescript-starter/compare/v0.13.0...v0.13.1) (2026-11-01)
 
 ### Security
