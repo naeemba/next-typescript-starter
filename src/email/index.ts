@@ -82,8 +82,24 @@ export async function sendEmail(args: EmailArgs): Promise<void> {
   }
 }
 
+// Derives the plain-text part of an email from its HTML. The output is plain
+// text, not markup, so nothing needs escaping: the job is only to drop every
+// `<...>` tag. Same result as `html.replace(/<[^>]*>/g, "")`, but that regex
+// rescans to the end of the input from every unclosed `<`, which is quadratic
+// on a body like "<<<<…". This scan visits each character once. An unclosed
+// `<` is not a tag, so it and the text after it are kept, as before.
 function stripTags(html: string): string {
-  return html.replace(/<[^>]*>/g, "").trim()
+  let out = ""
+  let cursor = 0
+  while (cursor < html.length) {
+    const open = html.indexOf("<", cursor)
+    if (open === -1) break
+    const close = html.indexOf(">", open + 1)
+    if (close === -1) break
+    out += html.slice(cursor, open)
+    cursor = close + 1
+  }
+  return (out + html.slice(cursor)).trim()
 }
 
 export interface SendMagicLinkArgs {
