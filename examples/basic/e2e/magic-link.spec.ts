@@ -57,5 +57,5 @@ test("magic-link sign-in works end to end", async ({ page }) => {
 
   await page.goto(magicUrl)
   await expect(page).toHaveURL("http://localhost:3000/")
-  await expect(page.getByTestId("user-email")).toHaveText(new RegExp(email.replace(/[.+]/g, "\\$&")))
+  await expect(page.getByTestId("user-email")).toContainText(email)
 })
