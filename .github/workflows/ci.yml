@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main]
 
+# Both jobs only check out and run code; neither writes to the repository.
+permissions:
+  contents: read
+
 jobs:
   ci:
     runs-on: ubuntu-latest

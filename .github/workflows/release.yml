@@ -4,6 +4,9 @@ on:
   push:
     tags: ["v*.*.*"]
 
+# No default token scope; each job asks for exactly what it needs.
+permissions: {}
+
 jobs:
   publish:
     runs-on: ubuntu-latest
