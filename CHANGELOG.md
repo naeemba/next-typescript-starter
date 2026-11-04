@@ -6,7 +6,7 @@ All notable changes to `@naeemba/next-starter`. Migration steps live in [UPGRADI
 
 ### Security
 
-* Polynomial-time regexes (ReDoS) in `createProxy` and `sendEmail`. The proxy stripped trailing slashes with `/\/+$/`, so a request to a path of many slashes followed by one more character (`/` × 100,000 then `x`) held the request for about 4.5 seconds, in every app that mounts the proxy. `sendEmail` derived the plain-text part from `html` with `/<[^>]*>/g`, which took as long on a body of many unclosed `<`. Both now use a linear scan with the same output on every input. The Postal transport's `POSTAL_API_URL` normalisation used the same slash regex and shares the new helper.
+* Polynomial-time regexes (ReDoS) in `createProxy` and `sendEmail`. The proxy stripped trailing slashes with `/\/+$/`, so a request to a path of many slashes followed by one more character (`/` × 100,000 then `x`) held the request for about 4.5 seconds. On Next's own server, repeated slashes are redirected before the proxy runs, so this mattered only where a proxy or rewrite in front of the app passed them through; the fix ships as defence in depth. `sendEmail` derived the plain-text part from `html` with `/<[^>]*>/g`, which took as long on a body of many unclosed `<`. Both now use a linear scan with the same output on every input. The Postal transport's `POSTAL_API_URL` normalisation used the same slash regex and shares the new helper.
 * CI and release workflows now run with least-privilege `GITHUB_TOKEN` permissions.
 
 ### Bug Fixes

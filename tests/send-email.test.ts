@@ -8,7 +8,7 @@ vi.mock("../src/email/console", () => ({ sendViaConsole: consoleSpy }))
 vi.mock("../src/email/resend", () => ({ sendViaResend: resendSpy }))
 vi.mock("../src/email/postal", () => ({ sendViaPostal: postalSpy }))
 
-describe("sendEmail transport selection", () => {
+describe("sendEmail", () => {
   let originalKey: string | undefined
   let originalFrom: string | undefined
   let originalTransport: string | undefined
@@ -117,7 +117,6 @@ describe("sendEmail transport selection", () => {
     expect(consoleSpy).toHaveBeenCalledTimes(1)
     expect(resendSpy).not.toHaveBeenCalled()
   })
-
 
   // The plain-text part derived from `html` used to come from
   // `/<[^>]*>/g`, which rescans to the end of the input from every unclosed

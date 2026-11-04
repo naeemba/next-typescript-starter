@@ -295,22 +295,22 @@ describe("createProxy", () => {
 // The trailing-slash normalisation used to be `/\/+$/`, which retries from
 // every slash in a run: a pathname of many slashes and one more character
 // took quadratic time, on every request. Before the fix, 100k slashes took
-// tens of seconds here.
+// about 4.5 seconds here.
 describe("createProxy trailing-slash normalisation", () => {
   it("handles a pathname of many slashes in linear time", async () => {
     const { createProxy } = await import("../src/proxy/index.js")
-    const mw = createProxy({ protect: ["/admin/:path*"] })
+    const proxy = createProxy({ protect: ["/admin/:path*"] })
     const pathname = "/".repeat(100_000) + "x"
     const started = performance.now()
-    expect(mw(makeReq({ pathname }) as unknown as Parameters<typeof mw>[0])).toEqual({ type: "next" })
+    expect(proxy(makeReq({ pathname }) as unknown as Parameters<typeof proxy>[0])).toEqual({ type: "next" })
     expect(performance.now() - started).toBeLessThan(500)
   })
 
   it("still treats /sign-in, /sign-in/ and /sign-in// as the sign-in page", async () => {
     const { createProxy } = await import("../src/proxy/index.js")
-    const mw = createProxy({ protect: ["/sign-in/*"] })
+    const proxy = createProxy({ protect: ["/sign-in/*"] })
     for (const pathname of ["/sign-in", "/sign-in/", "/sign-in//"]) {
-      expect(mw(makeReq({ pathname }) as unknown as Parameters<typeof mw>[0])).toEqual({ type: "next" })
+      expect(proxy(makeReq({ pathname }) as unknown as Parameters<typeof proxy>[0])).toEqual({ type: "next" })
     }
   })
 
@@ -321,7 +321,7 @@ describe("createProxy trailing-slash normalisation", () => {
 
   it("still protects a path that is not the sign-in page", async () => {
     const { createProxy } = await import("../src/proxy/index.js")
-    const mw = createProxy({ protect: ["/sign-in-help/:path*"] })
-    expect(mw(makeReq({ pathname: "/sign-in-help/" }) as unknown as Parameters<typeof mw>[0])).toMatchObject({ type: "redirect" })
+    const proxy = createProxy({ protect: ["/sign-in-help/:path*"] })
+    expect(proxy(makeReq({ pathname: "/sign-in-help/" }) as unknown as Parameters<typeof proxy>[0])).toMatchObject({ type: "redirect" })
   })
 })
