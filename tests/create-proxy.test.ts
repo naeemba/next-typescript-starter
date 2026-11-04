@@ -291,3 +291,37 @@ describe("createProxy", () => {
     expect((mod as Record<string, unknown>).createMiddleware).toBeUndefined()
   })
 })
+
+// The trailing-slash normalisation used to be `/\/+$/`, which retries from
+// every slash in a run: a pathname of many slashes and one more character
+// took quadratic time, on every request. Before the fix, 100k slashes took
+// tens of seconds here.
+describe("createProxy trailing-slash normalisation", () => {
+  it("handles a pathname of many slashes in linear time", async () => {
+    const { createProxy } = await import("../src/proxy/index.js")
+    const mw = createProxy({ protect: ["/admin/:path*"] })
+    const pathname = "/".repeat(100_000) + "x"
+    const started = performance.now()
+    expect(mw(makeReq({ pathname }) as unknown as Parameters<typeof mw>[0])).toEqual({ type: "next" })
+    expect(performance.now() - started).toBeLessThan(500)
+  })
+
+  it("still treats /sign-in, /sign-in/ and /sign-in// as the sign-in page", async () => {
+    const { createProxy } = await import("../src/proxy/index.js")
+    const mw = createProxy({ protect: ["/sign-in/*"] })
+    for (const pathname of ["/sign-in", "/sign-in/", "/sign-in//"]) {
+      expect(mw(makeReq({ pathname }) as unknown as Parameters<typeof mw>[0])).toEqual({ type: "next" })
+    }
+  })
+
+  it("still strips trailing slashes from signInPath at construction", async () => {
+    const { createProxy } = await import("../src/proxy/index.js")
+    expect(() => createProxy({ protect: ["/login"], signInPath: "/login//" })).toThrow(/infinite redirect loop/)
+  })
+
+  it("still protects a path that is not the sign-in page", async () => {
+    const { createProxy } = await import("../src/proxy/index.js")
+    const mw = createProxy({ protect: ["/sign-in-help/:path*"] })
+    expect(mw(makeReq({ pathname: "/sign-in-help/" }) as unknown as Parameters<typeof mw>[0])).toMatchObject({ type: "redirect" })
+  })
+})

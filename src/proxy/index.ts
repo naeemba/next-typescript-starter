@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server"
+import { stripTrailingSlashes } from "../internal/strip-trailing-slashes.js"
 
 // Re-exported so consumers who write their own proxy (host canonicalization,
 // geo gating, A/B routing, etc.) can still do the cheap session-cookie
@@ -135,7 +136,7 @@ export function createProxy(opts: CreateProxyOptions) {
   //   and a request to `/sign-in/` is short-circuited at runtime below
   //   before the protect check runs. Probing the trailing variant here
   //   would reject that pattern as a false positive.
-  const signInPathNoSlash = signInPath.replace(/\/+$/, "")
+  const signInPathNoSlash = stripTrailingSlashes(signInPath)
   const offending = opts.protect.find((_p, i) => compiled[i]!.test(signInPathNoSlash))
   if (offending !== undefined) {
     throw new Error(
@@ -150,7 +151,7 @@ export function createProxy(opts: CreateProxyOptions) {
     // Defense-in-depth: even with the boot-time guard above, a consumer
     // rewrite upstream could still hand us `/sign-in/` under
     // `trailingSlash: true`. Normalize both sides before comparing.
-    if (pathname === signInPath || pathname.replace(/\/+$/, "") === signInPathNoSlash) {
+    if (pathname === signInPath || stripTrailingSlashes(pathname) === signInPathNoSlash) {
       return NextResponse.next()
     }
     const isProtected = compiled.some((re) => re.test(pathname))
